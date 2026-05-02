@@ -4,10 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <title>BarsikNet 3.0 — Социальная сеть</title>
-    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
-    <!-- Font Awesome 6 (free icons) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         * {
@@ -26,7 +24,6 @@
             padding: 16px;
         }
 
-        /* Glassmorphic main container */
         .app-container {
             width: 100%;
             max-width: 1400px;
@@ -42,7 +39,6 @@
             transition: all 0.3s ease;
         }
 
-        /* main content + tab bar */
         .main-content {
             flex: 1;
             overflow-y: auto;
@@ -50,11 +46,42 @@
             scroll-behavior: smooth;
         }
 
-        /* tab bar (liquid glass) */
+        .fullscreen-chat {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 245, 225, 0.98);
+            backdrop-filter: blur(20px);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+        .fullscreen-chat .chat-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+            background: rgba(255, 200, 120, 0.5);
+            border-radius: 32px;
+            margin-bottom: 16px;
+        }
+        .fullscreen-chat .chat-messages-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+        .fullscreen-chat .chat-input-area {
+            padding: 16px;
+            display: flex;
+            gap: 12px;
+        }
+
         .tab-bar {
             background: rgba(30, 20, 15, 0.5);
             backdrop-filter: blur(30px);
-            -webkit-backdrop-filter: blur(30px);
             border-top: 1px solid rgba(255, 215, 150, 0.6);
             display: flex;
             justify-content: space-around;
@@ -89,7 +116,6 @@
             box-shadow: 0 6px 14px rgba(0,0,0,0.2);
         }
 
-        /* auth panels */
         .auth-panel {
             background: rgba(255,245,225,0.9);
             border-radius: 40px;
@@ -127,19 +153,9 @@
             border-radius: 32px;
             padding: 16px;
             margin-bottom: 16px;
-            transition: 0.2s;
             border: 1px solid rgba(255,160,50,0.6);
         }
 
-        .user-row, .chat-message {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 8px;
-            border-bottom: 1px solid #ffcc88;
-        }
-
-        /* AVATAR: круг с фоном и смайликом вместе */
         .avatar-circle {
             width: 56px;
             height: 56px;
@@ -148,8 +164,6 @@
             align-items: center;
             justify-content: center;
             font-size: 32px;
-            background-size: cover;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
             flex-shrink: 0;
         }
         .avatar-sm {
@@ -168,36 +182,61 @@
         .online { background: #2ecc71; box-shadow:0 0 6px #2ecc71; }
         .offline { background: #95a5a6; }
 
-        .search-box {
-            background: #fff6e8;
-            border-radius: 60px;
-            padding: 10px 20px;
+        .post-card {
             margin-bottom: 24px;
         }
-
-        h2, h3 { color: #4a2a0e; }
-
-        /* responsive optimization (pc / mobile) */
+        .post-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .post-actions {
+            display: flex;
+            gap: 24px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #ffcc88;
+        }
+        .post-actions button {
+            width: auto;
+            background: transparent;
+            color: #f57c00;
+            margin: 0;
+            padding: 8px 16px;
+        }
+        .comments-section {
+            margin-top: 12px;
+            padding-left: 20px;
+            border-left: 2px solid #f57c00;
+        }
+        .filter-buttons {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .filter-btn {
+            background: #ffd8a8;
+            color: #4a2a0e;
+            width: auto;
+            padding: 8px 24px;
+        }
+        .filter-btn.active {
+            background: #f57c00;
+            color: white;
+        }
+        .verif-badge { color: #3498db; margin-left: 6px; font-size: 14px; }
+        .like-btn.liked { color: #e74c3c; }
+        .flex-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        
         @media (min-width: 1024px) {
             .app-container { width: 1000px; height: 85vh; }
-            .main-content { padding: 32px; }
-            .tab-bar { padding: 12px 32px 20px; }
         }
-
         @media (max-width: 600px) {
             .tab-item span { font-size: 10px; }
             .tab-item i { font-size: 20px; }
         }
-
-        .msg-bubble {
-            background: #f2a65a;
-            border-radius: 24px;
-            padding: 10px 14px;
-            max-width: 70%;
-        }
-        .flex-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-        .group-actions button { width: auto; padding: 8px 16px; margin-left: 8px; }
-
+        
         .toast-msg {
             position: fixed;
             bottom: 20px;
@@ -207,57 +246,56 @@
             padding: 10px 20px;
             border-radius: 50px;
             z-index: 999;
-            font-size: 14px;
         }
-        .verif-badge { color: #3498db; margin-left: 6px; font-size: 14px; }
-        .profile-header {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            margin-bottom: 20px;
+
+        .msg-bubble {
+            background: #f2a65a;
+            border-radius: 24px;
+            padding: 10px 14px;
+            max-width: 70%;
         }
-        .online-text { font-size: 12px; font-weight: normal; margin-left: 6px; }
     </style>
 </head>
 <body>
-<div class="app-container" id="appRoot">
-    <!-- динамическая отрисовка через js -->
-</div>
+<div class="app-container" id="appRoot"></div>
 
 <script>
-    // Firebase конфиг (твой URL базы)
-    const firebaseConfig = {
-        databaseURL: "https://onlinesm1-default-rtdb.firebaseio.com/"
-    };
+    const firebaseConfig = { databaseURL: "https://onlinesm1-default-rtdb.firebaseio.com/" };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // Глобальное состояние
-    let currentUser = null;         // { username, nickname, userId, avatarIcon, avatarBg, verified }
-    let onlineUsersRef = null;
-    let presenceRef = null;
+    let currentUser = null;
+    let activeTab = 'posts';
+    let currentChatUserId = null;
+    let currentChannelId = null;
+    let currentGroupId = null;
+    let searchResults = null;
+    let postsFilter = 'new';
+    let fullscreenMode = false;
+    
+    let messageListenerUnsub = null;
+    let channelListenerUnsub = null;
+    let groupListenerUnsub = null;
 
-    // вспомогательные функции
-    function showToast(msg, duration=2000) {
+    // Сохранённый текст ввода (чтобы не терялся)
+    let savedDraft = '';
+
+    function showToast(msg) {
         let toast = document.createElement('div');
         toast.className = 'toast-msg';
         toast.innerText = msg;
         document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), duration);
+        setTimeout(() => toast.remove(), 2000);
     }
 
-    // генерация ID (username-based)
     function getUserId(username) { return username.toLowerCase().replace(/[^a-z0-9]/g, '') + '_' + Date.now(); }
-
-    // Сохранение сессии в localStorage
+    
     function saveSession(user) {
         if(user) localStorage.setItem('barsik_session', JSON.stringify({ userId: user.userId, username: user.username }));
         else localStorage.removeItem('barsik_session');
     }
 
-    // Проверка онлайн статуса
     function initPresence(userId) {
-        if(presenceRef) presenceRef.off();
         const userStatusRef = db.ref(`/users/${userId}/online`);
         const connectedRef = db.ref('.info/connected');
         connectedRef.on('value', (snap) => {
@@ -266,15 +304,8 @@
                 userStatusRef.set(true);
             }
         });
-        presenceRef = userStatusRef;
     }
 
-    // Обновление статуса в сети для всех контактов
-    function watchUserStatus(userId, callback) {
-        db.ref(`/users/${userId}/online`).on('value', (snap) => callback(snap.val()));
-    }
-
-    // Вход/регистрация
     async function registerUser(nickname, username, password) {
         const usersRef = db.ref('users');
         const snapshot = await usersRef.orderByChild('username').equalTo(username).once('value');
@@ -304,11 +335,9 @@
         if(!saved) return null;
         const { userId } = JSON.parse(saved);
         const snap = await db.ref(`users/${userId}`).once('value');
-        if(snap.exists()) return snap.val();
-        return null;
+        return snap.exists() ? snap.val() : null;
     }
 
-    // поиск по юзернейму (люди и каналы)
     async function searchGlobal(query) {
         const usersSnap = await db.ref('users').orderByChild('username').equalTo(query).once('value');
         const channelsSnap = await db.ref('channels').orderByChild('username').equalTo(query).once('value');
@@ -319,16 +348,30 @@
         return { users, channels };
     }
 
-    // Личные сообщения
+    async function getContacts() {
+        const chatsRef = db.ref('chats');
+        const snapshot = await chatsRef.once('value');
+        const contacts = new Set();
+        snapshot.forEach(chat => {
+            const chatId = chat.key;
+            const participants = chatId.split('_');
+            if(participants.includes(currentUser.userId)) {
+                const otherId = participants[0] === currentUser.userId ? participants[1] : participants[0];
+                contacts.add(otherId);
+            }
+        });
+        const contactUsers = [];
+        for(let userId of contacts) {
+            const userSnap = await db.ref(`users/${userId}`).once('value');
+            if(userSnap.exists()) contactUsers.push(userSnap.val());
+        }
+        return contactUsers;
+    }
+
     async function sendPrivateMessage(toUserId, text) {
         if(!text.trim()) return;
         const chatId = [currentUser.userId, toUserId].sort().join('_');
-        const msgObj = {
-            from: currentUser.userId,
-            text: text,
-            timestamp: Date.now(),
-            read: false
-        };
+        const msgObj = { from: currentUser.userId, text, timestamp: Date.now() };
         await db.ref(`chats/${chatId}/messages`).push(msgObj);
     }
 
@@ -345,17 +388,65 @@
         return () => msgRef.off();
     }
 
-    // Каналы: владелец пишет, остальные читают
+    // Посты
+    async function createPost(text) {
+        const postId = 'post_' + Date.now();
+        const post = {
+            postId,
+            authorId: currentUser.userId,
+            authorName: currentUser.nickname,
+            authorUsername: currentUser.username,
+            authorAvatar: currentUser.avatarIcon,
+            authorBg: currentUser.avatarBg,
+            text,
+            likes: {},
+            comments: [],
+            timestamp: Date.now(),
+            likesCount: 0
+        };
+        await db.ref(`posts/${postId}`).set(post);
+        return post;
+    }
+
+    async function toggleLike(postId) {
+        const postRef = db.ref(`posts/${postId}/likes/${currentUser.userId}`);
+        const snapshot = await postRef.once('value');
+        if(snapshot.exists()) {
+            await postRef.remove();
+        } else {
+            await postRef.set(true);
+        }
+        // Обновляем счётчик лайков
+        const likesSnap = await db.ref(`posts/${postId}/likes`).once('value');
+        const count = likesSnap.exists() ? likesSnap.numChildren() : 0;
+        await db.ref(`posts/${postId}/likesCount`).set(count);
+    }
+
+    async function addComment(postId, text) {
+        const comment = {
+            userId: currentUser.userId,
+            userName: currentUser.nickname,
+            text,
+            timestamp: Date.now()
+        };
+        await db.ref(`posts/${postId}/comments`).push(comment);
+    }
+
+    async function getPosts(order = 'new') {
+        const snapshot = await db.ref('posts').once('value');
+        let posts = [];
+        snapshot.forEach(p => posts.push(p.val()));
+        if(order === 'new') posts.sort((a,b) => b.timestamp - a.timestamp);
+        else posts.sort((a,b) => (b.likesCount || 0) - (a.likesCount || 0));
+        return posts;
+    }
+
+    // Каналы
     async function createChannel(channelName, channelUsername, ownerId) {
         const chanId = 'chan_'+Date.now();
         const newChan = {
-            channelId: chanId,
-            name: channelName,
-            username: channelUsername,
-            ownerId: ownerId,
-            subscribers: { [ownerId]: true },
-            verified: false,
-            messages: []
+            channelId: chanId, name: channelName, username: channelUsername,
+            ownerId: ownerId, subscribers: { [ownerId]: true }, verified: false, messages: []
         };
         await db.ref(`channels/${chanId}`).set(newChan);
         return newChan;
@@ -367,10 +458,8 @@
 
     async function sendChannelMessage(channelId, userId, text) {
         const chanSnap = await db.ref(`channels/${channelId}`).once('value');
-        const channel = chanSnap.val();
-        if(channel.ownerId !== userId) throw new Error('Только владелец может писать в канал');
-        const msg = { from: userId, text, timestamp: Date.now() };
-        await db.ref(`channels/${channelId}/messages`).push(msg);
+        if(chanSnap.val().ownerId !== userId) throw new Error('Только владелец может писать');
+        await db.ref(`channels/${channelId}/messages`).push({ from: userId, text, timestamp: Date.now() });
     }
 
     function listenChannelMessages(channelId, callback) {
@@ -382,13 +471,12 @@
         });
     }
 
-    // Группы: все пишут, владелец может добавлять участников
+    // Группы
     async function createGroup(groupName, groupUsername, ownerId) {
         const groupId = 'grp_'+Date.now();
         const newGrp = {
             groupId, name: groupName, username: groupUsername, ownerId,
-            members: { [ownerId]: true },
-            messages: []
+            members: { [ownerId]: true }, messages: []
         };
         await db.ref(`groups/${groupId}`).set(newGrp);
         return newGrp;
@@ -401,8 +489,7 @@
     async function sendGroupMessage(groupId, userId, text) {
         const grpSnap = await db.ref(`groups/${groupId}`).once('value');
         if(!grpSnap.val().members[userId]) throw new Error('Вы не участник');
-        const msg = { from: userId, text, timestamp: Date.now() };
-        await db.ref(`groups/${groupId}/messages`).push(msg);
+        await db.ref(`groups/${groupId}/messages`).push({ from: userId, text, timestamp: Date.now() });
     }
 
     function listenGroupMessages(groupId, callback) {
@@ -414,7 +501,6 @@
         });
     }
 
-    // обновление аватара (смайлик + фон) — сохраняем в базу
     async function updateUserAvatar(icon, bgColor) {
         await db.ref(`users/${currentUser.userId}/avatarIcon`).set(icon);
         await db.ref(`users/${currentUser.userId}/avatarBg`).set(bgColor);
@@ -423,70 +509,449 @@
         showToast('Аватар обновлён');
     }
 
-    // Функция отрисовки аватара (круг+фон+смайлик)
     function renderAvatar(icon, bgColor, sizeClass = '') {
-        return `<div class="avatar-circle ${sizeClass}" style="background-color: ${bgColor || '#ffb347'}; display: flex; align-items: center; justify-content: center;">${icon || '🐱'}</div>`;
+        return `<div class="avatar-circle ${sizeClass}" style="background-color: ${bgColor || '#ffb347'};">${icon || '🐱'}</div>`;
     }
 
-    // отрисовка UI
-    let activeTab = 'chats';
-    let currentChatUserId = null;
-    let currentChannelId = null;
-    let currentGroupId = null;
-    let searchResults = null;
+    // === ОТРИСОВКА ВКЛАДОК ===
+    async function renderPostsTab() {
+        const posts = await getPosts(postsFilter);
+        const postsHtml = posts.map(post => `
+            <div class="card post-card" data-post-id="${post.postId}">
+                <div class="post-header">
+                    ${renderAvatar(post.authorAvatar, post.authorBg, 'avatar-sm')}
+                    <div>
+                        <strong>${post.authorName}</strong> @${post.authorUsername} ${post.authorVerified ? '<i class="fas fa-check-circle verif-badge"></i>' : ''}
+                        <div style="font-size: 12px; color: #6b4c2a;">${new Date(post.timestamp).toLocaleString()}</div>
+                    </div>
+                </div>
+                <p style="font-size: 16px; margin: 12px 0;">${post.text}</p>
+                <div class="post-actions">
+                    <button class="like-btn" data-post-id="${post.postId}"><i class="fas fa-heart"></i> ${post.likesCount || 0}</button>
+                    <button class="comment-toggle-btn" data-post-id="${post.postId}"><i class="fas fa-comment"></i> Комментировать</button>
+                </div>
+                <div class="comments-section" id="comments-${post.postId}" style="display: none;">
+                    <div id="comments-list-${post.postId}">
+                        ${post.comments && post.comments.length ? post.comments.map(c => `<div><strong>${c.userName}</strong>: ${c.text}</div>`).join('') : '<i>Нет комментариев</i>'}
+                    </div>
+                    <div class="flex-between" style="margin-top: 12px;">
+                        <input type="text" id="comment-input-${post.postId}" placeholder="Ваш комментарий...">
+                        <button class="add-comment-btn" data-post-id="${post.postId}" style="width: auto;">→</button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+        
+        return `
+            <div class="filter-buttons">
+                <button class="filter-btn ${postsFilter === 'new' ? 'active' : ''}" data-filter="new">📅 Новые</button>
+                <button class="filter-btn ${postsFilter === 'popular' ? 'active' : ''}" data-filter="popular">🔥 Популярные</button>
+            </div>
+            <div class="card">
+                <textarea id="newPostText" rows="3" placeholder="Что нового, кот? 🐱"></textarea>
+                <button id="createPostBtn">📝 Опубликовать пост</button>
+            </div>
+            <div id="postsList">${postsHtml}</div>
+        `;
+    }
 
-    let messageListenerUnsub = null;
-    let channelListenerUnsub = null;
-    let groupListenerUnsub = null;
+    async function renderChatsTab() {
+        if(currentChatUserId) {
+            return await renderFullscreenChat();
+        }
+        const contacts = await getContacts();
+        const contactsHtml = contacts.map(async u => {
+            const status = (await db.ref(`users/${u.userId}/online`).once('value')).val();
+            return `
+                <div class="card user-row" style="display: flex; align-items: center; gap: 12px;">
+                    ${renderAvatar(u.avatarIcon, u.avatarBg, 'avatar-sm')}
+                    <div style="flex:1">
+                        <strong>${u.nickname}</strong> @${u.username} ${u.verified ? '<i class="fas fa-check-circle verif-badge"></i>' : ''}<br>
+                        <span><span class="online-status ${status ? 'online' : 'offline'}"></span> ${status ? 'В сети' : 'Не в сети'}</span>
+                    </div>
+                    <button class="openChatBtn" data-userid="${u.userId}" data-name="${u.nickname}">💬</button>
+                </div>
+            `;
+        });
+        const resolved = await Promise.all(contactsHtml);
+        return `<h2><i class="fas fa-comment-dots"></i> Личные сообщения</h2>
+                <div>${resolved.length ? resolved.join('') : '<div class="card">Напишите кому-нибудь через поиск, чтобы начать диалог</div>'}</div>`;
+    }
+
+    async function renderFullscreenChat() {
+        const targetSnap = await db.ref(`users/${currentChatUserId}`).once('value');
+        const target = targetSnap.val();
+        if(!target) return '<div>Пользователь не найден</div>';
+        
+        // Создаём временный контейнер для полноэкранного чата
+        setTimeout(() => {
+            const chatContainer = document.getElementById('fullscreenChatContainer');
+            if(!chatContainer) return;
+            
+            let msgDiv = document.getElementById('fullscreenMsgList');
+            if(msgDiv) {
+                if(messageListenerUnsub) messageListenerUnsub();
+                listenMessagesWith(currentChatUserId, (msgs) => {
+                    const currentMsgDiv = document.getElementById('fullscreenMsgList');
+                    if(currentMsgDiv) {
+                        currentMsgDiv.innerHTML = msgs.map(m => `
+                            <div style="display: flex; justify-content: ${m.from === currentUser.userId ? 'flex-end' : 'flex-start'}; margin: 8px 0;">
+                                <div class="msg-bubble" style="background: ${m.from === currentUser.userId ? '#faa75e' : '#ffe1b3'}">
+                                    ${m.text}<br><small style="opacity:0.7">${new Date(m.timestamp).toLocaleTimeString()}</small>
+                                </div>
+                            </div>
+                        `).join('');
+                        currentMsgDiv.scrollTop = currentMsgDiv.scrollHeight;
+                    }
+                }).then(unsub => { messageListenerUnsub = unsub; });
+            }
+            
+            const inputField = document.getElementById('fullscreenMsgInput');
+            const sendBtn = document.getElementById('fullscreenSendBtn');
+            
+            const sendMessage = async () => {
+                const text = inputField.value;
+                if(text.trim()) {
+                    await sendPrivateMessage(currentChatUserId, text);
+                    inputField.value = '';
+                    savedDraft = '';
+                }
+            };
+            
+            sendBtn?.addEventListener('click', sendMessage);
+            inputField?.addEventListener('keypress', (e) => {
+                if(e.key === 'Enter') sendMessage();
+            });
+            // Сохраняем черновик
+            inputField?.addEventListener('input', (e) => { savedDraft = e.target.value; });
+            if(savedDraft) inputField.value = savedDraft;
+            
+        }, 50);
+        
+        return `
+            <div id="fullscreenChatContainer" class="fullscreen-chat">
+                <div class="chat-header">
+                    <button id="closeFullscreenBtn" style="width: auto; background: #ffaa66;"><i class="fas fa-arrow-left"></i> Назад</button>
+                    ${renderAvatar(target.avatarIcon, target.avatarBg, 'avatar-sm')}
+                    <div><strong>${target.nickname}</strong> @${target.username}</div>
+                </div>
+                <div class="chat-messages-area" id="fullscreenMsgList" style="flex: 1; overflow-y: auto;"></div>
+                <div class="chat-input-area">
+                    <input type="text" id="fullscreenMsgInput" placeholder="Сообщение..." style="flex: 1;">
+                    <button id="fullscreenSendBtn" style="width: auto;">Отправить</button>
+                </div>
+            </div>
+        `;
+    }
+
+    async function renderChannelsTab() {
+        if(currentChannelId) {
+            return await renderFullscreenChannel();
+        }
+        const channelsSnap = await db.ref('channels').once('value');
+        let channels = [];
+        channelsSnap.forEach(ch => channels.push(ch.val()));
+        const mySubs = channels.filter(c => c.subscribers && c.subscribers[currentUser.userId]);
+        return `<h2><i class="fas fa-bullhorn"></i> Мои каналы</h2>
+                ${mySubs.map(c => `<div class="card"><strong>📢 ${c.name}</strong> @${c.username} ${c.verified ? '<i class="fas fa-check-circle verif-badge"></i>' : ''}<br><button class="openChannelBtn" data-id="${c.channelId}">Открыть</button></div>`).join('')}
+                <h3>Создать канал</h3><input id="newChanName" placeholder="Название"><input id="newChanUsername" placeholder="Юзернейм"><button id="createChanBtn">Создать</button>`;
+    }
+
+    async function renderFullscreenChannel() {
+        const chanSnap = await db.ref(`channels/${currentChannelId}`).once('value');
+        const chan = chanSnap.val();
+        
+        setTimeout(() => {
+            const container = document.getElementById('fullscreenChatContainer');
+            if(!container) return;
+            
+            listenChannelMessages(currentChannelId, (msgs) => {
+                const msgDiv = document.getElementById('fullscreenMsgList');
+                if(msgDiv) {
+                    msgDiv.innerHTML = msgs.map(m => `<div class="msg-bubble" style="margin:8px 0;">📢 ${m.text}<br><small>от @${m.from}</small></div>`).join('');
+                    msgDiv.scrollTop = msgDiv.scrollHeight;
+                }
+            });
+            
+            const inputField = document.getElementById('fullscreenMsgInput');
+            const sendBtn = document.getElementById('fullscreenSendBtn');
+            if(chan.ownerId !== currentUser.userId && sendBtn) {
+                sendBtn.disabled = true;
+                inputField.disabled = true;
+                inputField.placeholder = "Только для чтения";
+            } else {
+                sendBtn?.addEventListener('click', async () => {
+                    const text = inputField.value;
+                    if(text) {
+                        try {
+                            await sendChannelMessage(currentChannelId, currentUser.userId, text);
+                            inputField.value = '';
+                        } catch(e) { showToast(e.message); }
+                    }
+                });
+            }
+        }, 50);
+        
+        return `
+            <div id="fullscreenChatContainer" class="fullscreen-chat">
+                <div class="chat-header">
+                    <button id="closeFullscreenBtn" style="width: auto;"><i class="fas fa-arrow-left"></i> Назад</button>
+                    <div><strong>📺 ${chan.name}</strong> @${chan.username}</div>
+                </div>
+                <div class="chat-messages-area" id="fullscreenMsgList" style="flex: 1; overflow-y: auto;"></div>
+                <div class="chat-input-area">
+                    <input type="text" id="fullscreenMsgInput" placeholder="${chan.ownerId === currentUser.userId ? 'Сообщение в канал...' : 'Только чтение'}" style="flex: 1;">
+                    <button id="fullscreenSendBtn" style="width: auto;">📢</button>
+                </div>
+            </div>
+        `;
+    }
+
+    async function renderGroupsTab() {
+        if(currentGroupId) {
+            return await renderFullscreenGroup();
+        }
+        const groupsSnap = await db.ref('groups').once('value');
+        let groups = [];
+        groupsSnap.forEach(g => groups.push(g.val()));
+        const myGroups = groups.filter(g => g.members && g.members[currentUser.userId]);
+        return `<h2>👥 Группы</h2>${myGroups.map(g => `<div class="card"><strong>${g.name}</strong> @${g.username}<br><button class="openGroupBtn" data-id="${g.groupId}">Войти</button></div>`).join('')}
+                <h3>Создать группу</h3><input id="newGrpName" placeholder="Название"><input id="newGrpUsername" placeholder="Юзернейм"><button id="createGrpBtn">Создать</button>`;
+    }
+
+    async function renderFullscreenGroup() {
+        const grpSnap = await db.ref(`groups/${currentGroupId}`).once('value');
+        const group = grpSnap.val();
+        
+        setTimeout(() => {
+            listenGroupMessages(currentGroupId, (msgs) => {
+                const msgDiv = document.getElementById('fullscreenMsgList');
+                if(msgDiv) {
+                    msgDiv.innerHTML = msgs.map(m => `<div style="margin:8px 0; padding:8px; background:#ffe5c4; border-radius:20px;"><strong>${m.from}</strong>: ${m.text}</div>`).join('');
+                    msgDiv.scrollTop = msgDiv.scrollHeight;
+                }
+            });
+            
+            const inputField = document.getElementById('fullscreenMsgInput');
+            const sendBtn = document.getElementById('fullscreenSendBtn');
+            sendBtn?.addEventListener('click', async () => {
+                const text = inputField.value;
+                if(text) {
+                    await sendGroupMessage(currentGroupId, currentUser.userId, text);
+                    inputField.value = '';
+                }
+            });
+        }, 50);
+        
+        return `
+            <div id="fullscreenChatContainer" class="fullscreen-chat">
+                <div class="chat-header">
+                    <button id="closeFullscreenBtn" style="width: auto;"><i class="fas fa-arrow-left"></i> Назад</button>
+                    <div><strong>👥 ${group.name}</strong></div>
+                    <button id="groupInfoBtn" style="width: auto; background: #ffaa66;" onclick="alert('Владелец может добавлять участников через профиль группы')">ℹ️ О группе</button>
+                </div>
+                <div class="chat-messages-area" id="fullscreenMsgList" style="flex: 1; overflow-y: auto;"></div>
+                <div class="chat-input-area">
+                    <input type="text" id="fullscreenMsgInput" placeholder="Сообщение..." style="flex: 1;">
+                    <button id="fullscreenSendBtn" style="width: auto;">Отправить</button>
+                </div>
+            </div>
+        `;
+    }
+
+    async function renderSearchTab() {
+        let resultsHtml = '';
+        if(searchResults) {
+            resultsHtml = `<h4>Люди:</h4>${searchResults.users.map(u => `<div class="card flex-between">${renderAvatar(u.avatarIcon, u.avatarBg, 'avatar-sm')}<div><strong>${u.nickname}</strong> @${u.username}</div><button class="msgUserBtn" data-id="${u.userId}">Написать</button></div>`).join('')}
+            <h4>Каналы:</h4>${searchResults.channels.map(c => `<div class="card flex-between"><div><strong>📢 ${c.name}</strong> @${c.username}</div><button class="subChannelBtn" data-id="${c.channelId}">Подписаться</button></div>`).join('')}`;
+        }
+        return `<div class="search-box"><input id="searchInput" placeholder="Поиск по юзернейму..."><button id="doSearchBtn">🔍 Найти</button></div>${resultsHtml}`;
+    }
+
+    function renderSettingsTab() {
+        return `<div class="card">
+            <h2>⚙️ Настройки профиля</h2>
+            <div class="flex-between" style="justify-content: flex-start; gap: 20px; margin-bottom: 20px;">
+                ${renderAvatar(currentUser.avatarIcon, currentUser.avatarBg)}
+                <div><strong>${currentUser.nickname}</strong> @${currentUser.username}</div>
+            </div>
+            <label>Смайлик: <input id="avatarIcon" value="${currentUser.avatarIcon || '🐱'}"></label>
+            <label>Цвет фона: <input type="color" id="avatarBg" value="${currentUser.avatarBg || '#ffb347'}"></label>
+            <button id="saveAvatarBtn">Сохранить аватар</button>
+            <button id="logoutBtn" style="background:#d9534f; margin-top: 20px;">🚪 Выйти</button>
+        </div>`;
+    }
+
+    // Обработчики событий
+    function attachEvents() {
+        // Фильтры постов
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                postsFilter = btn.dataset.filter;
+                await renderApp();
+            });
+        });
+        
+        // Создание поста
+        document.getElementById('createPostBtn')?.addEventListener('click', async () => {
+            const text = document.getElementById('newPostText').value;
+            if(text) {
+                await createPost(text);
+                document.getElementById('newPostText').value = '';
+                await renderApp();
+            }
+        });
+        
+        // Лайки и комментарии (делегирование)
+        document.querySelectorAll('.like-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const postId = btn.dataset.postId;
+                await toggleLike(postId);
+                await renderApp();
+            });
+        });
+        
+        document.querySelectorAll('.comment-toggle-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const postId = btn.dataset.postId;
+                const commentsDiv = document.getElementById(`comments-${postId}`);
+                if(commentsDiv) commentsDiv.style.display = commentsDiv.style.display === 'none' ? 'block' : 'none';
+            });
+        });
+        
+        document.querySelectorAll('.add-comment-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const postId = btn.dataset.postId;
+                const input = document.getElementById(`comment-input-${postId}`);
+                if(input.value) {
+                    await addComment(postId, input.value);
+                    input.value = '';
+                    await renderApp();
+                }
+            });
+        });
+        
+        // Чаты
+        document.querySelectorAll('.openChatBtn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentChatUserId = btn.dataset.userid;
+                renderApp();
+            });
+        });
+        
+        document.querySelectorAll('.openChannelBtn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentChannelId = btn.dataset.id;
+                renderApp();
+            });
+        });
+        
+        document.querySelectorAll('.openGroupBtn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentGroupId = btn.dataset.id;
+                renderApp();
+            });
+        });
+        
+        document.getElementById('closeFullscreenBtn')?.addEventListener('click', () => {
+            currentChatUserId = null;
+            currentChannelId = null;
+            currentGroupId = null;
+            if(messageListenerUnsub) { messageListenerUnsub(); messageListenerUnsub = null; }
+            renderApp();
+        });
+        
+        document.getElementById('createChanBtn')?.addEventListener('click', async () => {
+            const name = document.getElementById('newChanName').value;
+            const uname = document.getElementById('newChanUsername').value;
+            if(name && uname) {
+                await createChannel(name, uname, currentUser.userId);
+                renderApp();
+            }
+        });
+        
+        document.getElementById('createGrpBtn')?.addEventListener('click', async () => {
+            const name = document.getElementById('newGrpName').value;
+            const uname = document.getElementById('newGrpUsername').value;
+            if(name && uname) {
+                await createGroup(name, uname, currentUser.userId);
+                renderApp();
+            }
+        });
+        
+        document.getElementById('doSearchBtn')?.addEventListener('click', async () => {
+            const q = document.getElementById('searchInput').value;
+            if(q) {
+                searchResults = await searchGlobal(q);
+                renderApp();
+            }
+        });
+        
+        document.querySelectorAll('.msgUserBtn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentChatUserId = btn.dataset.id;
+                activeTab = 'chats';
+                renderApp();
+            });
+        });
+        
+        document.querySelectorAll('.subChannelBtn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                await subscribeToChannel(btn.dataset.id, currentUser.userId);
+                showToast('Подписан на канал');
+                renderApp();
+            });
+        });
+        
+        document.getElementById('saveAvatarBtn')?.addEventListener('click', async () => {
+            const icon = document.getElementById('avatarIcon').value;
+            const bg = document.getElementById('avatarBg').value;
+            await updateUserAvatar(icon, bg);
+            renderApp();
+        });
+        
+        document.getElementById('logoutBtn')?.addEventListener('click', () => {
+            currentUser = null;
+            saveSession(null);
+            renderApp();
+        });
+    }
 
     async function renderApp() {
         const root = document.getElementById('appRoot');
         if(!currentUser) {
-            // форма авторизации
+            // Форма входа (упрощённо)
             root.innerHTML = `
                 <div class="auth-panel">
                     <h2 style="text-align:center">🐾 BarsikNet 3.0</h2>
-                    <div id="authTabs" style="display:flex; gap:10px; margin: 20px 0;">
-                        <button id="showLoginBtn" style="background:#f57c00">Вход</button>
-                        <button id="showRegBtn" style="background:#ffa559">Регистрация</button>
+                    <div style="display:flex; gap:10px; margin:20px 0;">
+                        <button id="showLoginBtn">Вход</button>
+                        <button id="showRegBtn">Регистрация</button>
                     </div>
                     <div id="authForm">
-                        <input type="text" id="loginUsername" placeholder="Юзернейм"><br>
-                        <input type="password" id="loginPassword" placeholder="Пароль"><br>
+                        <input type="text" id="loginUsername" placeholder="Юзернейм">
+                        <input type="password" id="loginPassword" placeholder="Пароль">
                         <button id="doLoginBtn">Войти</button>
                     </div>
                 </div>
             `;
-            document.getElementById('showLoginBtn')?.addEventListener('click',()=>{
-                document.getElementById('authForm').innerHTML = `<input type="text" id="loginUsername" placeholder="Юзернейм"><br>
-                <input type="password" id="loginPassword" placeholder="Пароль"><br>
-                <button id="doLoginBtn">Войти</button>`;
-                document.getElementById('doLoginBtn')?.addEventListener('click', async()=>{
-                    const uname = document.getElementById('loginUsername').value;
-                    const pwd = document.getElementById('loginPassword').value;
+            document.getElementById('showLoginBtn')?.addEventListener('click', () => {
+                document.getElementById('authForm').innerHTML = `<input type="text" id="loginUsername" placeholder="Юзернейм"><input type="password" id="loginPassword" placeholder="Пароль"><button id="doLoginBtn">Войти</button>`;
+                document.getElementById('doLoginBtn')?.addEventListener('click', async () => {
                     try {
-                        const user = await loginUser(uname, pwd);
-                        currentUser = user;
-                        saveSession(user);
+                        currentUser = await loginUser(document.getElementById('loginUsername').value, document.getElementById('loginPassword').value);
+                        saveSession(currentUser);
                         initPresence(currentUser.userId);
                         renderApp();
                     } catch(e) { showToast(e.message); }
                 });
             });
-            document.getElementById('showRegBtn')?.addEventListener('click',()=>{
-                document.getElementById('authForm').innerHTML = `<input type="text" id="regNick" placeholder="Никнейм"><br>
-                <input type="text" id="regUsername" placeholder="Юзернейм"><br>
-                <input type="password" id="regPassword" placeholder="Пароль"><br>
-                <button id="doRegBtn">Зарегистрироваться</button>`;
-                document.getElementById('doRegBtn')?.addEventListener('click', async()=>{
-                    const nick = document.getElementById('regNick').value;
-                    const uname = document.getElementById('regUsername').value;
-                    const pwd = document.getElementById('regPassword').value;
-                    if(!nick || !uname || !pwd) return showToast('Заполни все поля');
+            document.getElementById('showRegBtn')?.addEventListener('click', () => {
+                document.getElementById('authForm').innerHTML = `<input type="text" id="regNick" placeholder="Никнейм"><input type="text" id="regUsername" placeholder="Юзернейм"><input type="password" id="regPassword" placeholder="Пароль"><button id="doRegBtn">Зарегистрироваться</button>`;
+                document.getElementById('doRegBtn')?.addEventListener('click', async () => {
                     try {
-                        const newU = await registerUser(nick, uname, pwd);
-                        currentUser = newU;
-                        saveSession(newU);
+                        currentUser = await registerUser(document.getElementById('regNick').value, document.getElementById('regUsername').value, document.getElementById('regPassword').value);
+                        saveSession(currentUser);
                         initPresence(currentUser.userId);
                         renderApp();
                     } catch(e) { showToast(e.message); }
@@ -494,24 +959,19 @@
             });
             return;
         }
-
-        // Основной интерфейс
+        
         let mainView = '';
-        if(activeTab === 'chats') {
-            mainView = await renderChatsTab();
-        } else if(activeTab === 'channels') {
-            mainView = await renderChannelsTab();
-        } else if(activeTab === 'groups') {
-            mainView = await renderGroupsTab();
-        } else if(activeTab === 'search') {
-            mainView = await renderSearchTab();
-        } else if(activeTab === 'settings') {
-            mainView = renderSettingsTab();
-        }
-
+        if(activeTab === 'posts') mainView = await renderPostsTab();
+        else if(activeTab === 'chats') mainView = await renderChatsTab();
+        else if(activeTab === 'channels') mainView = await renderChannelsTab();
+        else if(activeTab === 'groups') mainView = await renderGroupsTab();
+        else if(activeTab === 'search') mainView = await renderSearchTab();
+        else if(activeTab === 'settings') mainView = renderSettingsTab();
+        
         root.innerHTML = `
             <div class="main-content" id="mainContent">${mainView}</div>
             <div class="tab-bar">
+                <div class="tab-item ${activeTab==='posts'?'active':''}" data-tab="posts"><i class="fas fa-newspaper"></i><span>Посты</span></div>
                 <div class="tab-item ${activeTab==='chats'?'active':''}" data-tab="chats"><i class="fas fa-comment-dots"></i><span>ЛС</span></div>
                 <div class="tab-item ${activeTab==='channels'?'active':''}" data-tab="channels"><i class="fas fa-bullhorn"></i><span>Каналы</span></div>
                 <div class="tab-item ${activeTab==='groups'?'active':''}" data-tab="groups"><i class="fas fa-users"></i><span>Группы</span></div>
@@ -519,208 +979,21 @@
                 <div class="tab-item ${activeTab==='settings'?'active':''}" data-tab="settings"><i class="fas fa-cog"></i><span>Настройки</span></div>
             </div>
         `;
+        
         document.querySelectorAll('.tab-item').forEach(tab => {
-            tab.addEventListener('click', (e) => {
+            tab.addEventListener('click', () => {
                 activeTab = tab.dataset.tab;
-                if(activeTab !== 'chats') currentChatUserId = null;
-                if(activeTab !== 'channels') currentChannelId = null;
-                if(activeTab !== 'groups') currentGroupId = null;
-                if(messageListenerUnsub) { messageListenerUnsub(); messageListenerUnsub=null; }
-                if(channelListenerUnsub) { channelListenerUnsub(); channelListenerUnsub=null; }
-                if(groupListenerUnsub) { groupListenerUnsub(); groupListenerUnsub=null; }
+                currentChatUserId = null;
+                currentChannelId = null;
+                currentGroupId = null;
+                if(messageListenerUnsub) { messageListenerUnsub(); messageListenerUnsub = null; }
                 renderApp();
             });
         });
-        attachTabDynamicEvents();
-    }
-
-    async function renderChatsTab() {
-        if(currentChatUserId) {
-            return await renderPrivateChat();
-        }
-        // список всех пользователей кроме себя
-        const usersSnap = await db.ref('users').once('value');
-        let contacts = [];
-        usersSnap.forEach(u => { if(u.val().userId !== currentUser.userId) contacts.push(u.val()); });
         
-        // добавляем статусы онлайн для каждого
-        let contactsHtml = '';
-        for(let u of contacts) {
-            const status = await new Promise(resolve => {
-                db.ref(`users/${u.userId}/online`).once('value', snap => resolve(snap.val()));
-            });
-            const isOnline = status === true;
-            contactsHtml += `
-                <div class="card user-row" data-userid="${u.userId}">
-                    ${renderAvatar(u.avatarIcon || '🐱', u.avatarBg || '#ffb347', 'avatar-sm')}
-                    <div style="flex:1">
-                        <strong>${u.nickname}</strong> @${u.username} ${u.verified ? '<i class="fas fa-check-circle verif-badge"></i>' : ''}<br>
-                        <span><i class="fas ${isOnline ? 'fa-circle' : 'fa-circle'} online-status ${isOnline ? 'online' : 'offline'}" style="font-size: 10px;"></i> ${isOnline ? 'В сети' : 'Не в сети'}</span>
-                    </div>
-                    <button class="startChatBtn" data-id="${u.userId}" data-name="${u.nickname}">💬 Написать</button>
-                </div>
-            `;
-        }
-        return `<h2><i class="fas fa-envelope"></i> Личные сообщения</h2>
-                ${contactsHtml || '<div class="card">Пока нет других пользователей</div>'}`;
+        attachEvents();
     }
 
-    async function renderPrivateChat() {
-        const targetSnap = await db.ref(`users/${currentChatUserId}`).once('value');
-        const target = targetSnap.val();
-        if(!target) return '<div>Пользователь не найден</div>';
-        let messagesHtml = '<div id="msgList" style="max-height: 55vh; overflow-y: auto; margin-bottom: 12px;"></div><div class="flex-between"><input type="text" id="msgInput" placeholder="Сообщение..."><button id="sendMsgBtn">Отправить</button></div>';
-        setTimeout(()=>{
-            const msgDiv = document.getElementById('msgList');
-            if(msgDiv) {
-                listenMessagesWith(currentChatUserId, (msgs)=>{
-                    msgDiv.innerHTML = msgs.map(m=>`<div style="display:flex; justify-content:${m.from===currentUser.userId ? 'flex-end' : 'flex-start'}; margin:8px 0;"><div class="msg-bubble" style="background:${m.from===currentUser.userId ? '#faa75e':'#ffe1b3'}">${m.text} <small style="opacity:0.7">${new Date(m.timestamp).toLocaleTimeString()}</small></div></div>`).join('');
-                    msgDiv.scrollTop = msgDiv.scrollHeight;
-                }).then(unsub=>{ if(messageListenerUnsub) messageListenerUnsub(); messageListenerUnsub=unsub; });
-            }
-            document.getElementById('sendMsgBtn')?.addEventListener('click', ()=>{
-                const text = document.getElementById('msgInput').value;
-                if(text) sendPrivateMessage(currentChatUserId, text);
-                document.getElementById('msgInput').value = '';
-            });
-        }, 50);
-        return `<div class="card"><button id="backChatsBtn" style="width: auto; margin-bottom: 16px;"><i class="fas fa-arrow-left"></i> Назад</button>
-        <div class="profile-header">${renderAvatar(target.avatarIcon || '🐱', target.avatarBg || '#ffb347')}<h3>${target.nickname} @${target.username}</h3></div>
-        ${messagesHtml}</div>`;
-    }
-
-    async function renderChannelsTab() {
-        if(currentChannelId) {
-            return await renderChannelView();
-        }
-        const channelsSnap = await db.ref('channels').once('value');
-        let channels = [];
-        channelsSnap.forEach(ch => channels.push(ch.val()));
-        const mySubs = channels.filter(c => c.subscribers && c.subscribers[currentUser.userId]);
-        return `<h2><i class="fas fa-bullhorn"></i> Мои каналы</h2>
-        ${mySubs.map(c=>`<div class="card" data-channel="${c.channelId}"><strong>📢 ${c.name}</strong> @${c.username} ${c.verified ? '<i class="fas fa-check-circle verif-badge"></i>' : ''}<br><button class="openChannelBtn" data-id="${c.channelId}">Открыть</button></div>`).join('')}
-        <h3>Создать канал</h3><input id="newChanName" placeholder="Название"><input id="newChanUsername" placeholder="Юзернейм канала"><button id="createChanBtn">Создать</button>`;
-    }
-
-    async function renderChannelView() {
-        const chanSnap = await db.ref(`channels/${currentChannelId}`).once('value');
-        const chan = chanSnap.val();
-        let messagesHtml = '<div id="chanMsgList" style="max-height:55vh; overflow-y:auto; margin-bottom:12px;"></div>';
-        if(chan.ownerId === currentUser.userId) {
-            messagesHtml += `<div class="flex-between"><input id="chanMsgInput" placeholder="Сообщение в канал..."><button id="sendChanMsgBtn">📢 Опубликовать</button></div>`;
-        } else {
-            messagesHtml += `<p><i class="fas fa-lock"></i> Только чтение. Владелец публикует новости.</i></p>`;
-        }
-        setTimeout(()=>{
-            listenChannelMessages(currentChannelId, (msgs)=>{
-                const container = document.getElementById('chanMsgList');
-                if(container) container.innerHTML = msgs.map(m=>`<div class="msg-bubble" style="margin:8px 0;">📢 ${m.text}<br><small>от @${m.from}</small></div>`).join('');
-            });
-            document.getElementById('sendChanMsgBtn')?.addEventListener('click', async()=>{
-                const txt = document.getElementById('chanMsgInput').value;
-                if(txt) try{ await sendChannelMessage(currentChannelId, currentUser.userId, txt); document.getElementById('chanMsgInput').value=''; }catch(e){showToast(e.message);}
-            });
-        },50);
-        return `<div><button id="backChannelsBtn" style="width: auto; margin-bottom: 16px;">← Назад</button><h3>📺 ${chan.name}</h3>${messagesHtml}</div>`;
-    }
-
-    async function renderGroupsTab() {
-        if(currentGroupId) return renderGroupChat();
-        const groupsSnap = await db.ref('groups').once('value');
-        let groups = [];
-        groupsSnap.forEach(g=>groups.push(g.val()));
-        const myGroups = groups.filter(g=>g.members && g.members[currentUser.userId]);
-        return `<h2>👥 Группы</h2>${myGroups.map(g=>`<div class="card" data-group="${g.groupId}"><strong>${g.name}</strong> @${g.username}<br><button class="openGroupBtn" data-id="${g.groupId}">Войти</button></div>`).join('')}
-        <h3>Создать группу</h3><input id="newGrpName" placeholder="Название группы"><input id="newGrpUsername" placeholder="Юзернейм"><button id="createGrpBtn">Создать</button>`;
-    }
-
-    async function renderGroupChat() {
-        const grpSnap = await db.ref(`groups/${currentGroupId}`).once('value');
-        const group = grpSnap.val();
-        let addMemberHtml = '';
-        if(group.ownerId === currentUser.userId) {
-            addMemberHtml = `<div class="flex-between" style="margin-top: 12px;"><input id="addMemberUsername" placeholder="Юзернейм для добавления"><button id="addMemberBtn">➕ Добавить</button></div>`;
-        }
-        setTimeout(()=>{
-            listenGroupMessages(currentGroupId, (msgs)=>{
-                const box = document.getElementById('groupMsgBox');
-                if(box) box.innerHTML = msgs.map(m=>`<div style="margin:8px 0; padding:8px; background:#ffe5c4; border-radius:20px;"><strong>${m.from}</strong>: ${m.text}</div>`).join('');
-            });
-            document.getElementById('sendGroupMsgBtn')?.addEventListener('click', async()=>{
-                const txt = document.getElementById('groupMsgInput').value;
-                if(txt) await sendGroupMessage(currentGroupId, currentUser.userId, txt);
-                document.getElementById('groupMsgInput').value='';
-            });
-            document.getElementById('addMemberBtn')?.addEventListener('click', async()=>{
-                const uname = document.getElementById('addMemberUsername').value;
-                const snap = await db.ref('users').orderByChild('username').equalTo(uname).once('value');
-                let uid=null; snap.forEach(u=> uid=u.val().userId);
-                if(uid) { await addMemberToGroup(currentGroupId, uid); showToast('Участник добавлен'); renderApp(); }
-                else showToast('Пользователь не найден');
-            });
-        },50);
-        return `<div><button id="backGroupsBtn" style="width: auto;">← Назад</button>
-        <div class="profile-header" style="cursor:pointer" onclick="alert('Профиль группы: владелец может добавлять участников')">
-            <div class="avatar-circle" style="background:#ffb873;">👥</div><h3>${group.name} 👑</h3>
-        </div>
-        ${addMemberHtml}<div id="groupMsgBox" style="height:300px; overflow-y:auto; background:#fff0dd; border-radius:32px; padding:12px; margin:12px 0;"></div>
-        <div class="flex-between"><input id="groupMsgInput" placeholder="Ваше сообщение..."><button id="sendGroupMsgBtn">Отправить</button></div></div>`;
-    }
-
-    async function renderSearchTab() {
-        let resultsHtml = '';
-        if(searchResults) {
-            resultsHtml = `<div><h4>Люди:</h4>${searchResults.users.map(u=>`<div class="card flex-between">${renderAvatar(u.avatarIcon || '🐱', u.avatarBg || '#ffb347', 'avatar-sm')}<div><strong>${u.nickname}</strong> @${u.username}</div><button class="msgUserBtn" data-id="${u.userId}">Написать</button></div>`).join('')}
-            <h4>Каналы:</h4>${searchResults.channels.map(c=>`<div class="card flex-between"><div><strong>📢 ${c.name}</strong> @${c.username}</div><button class="subChannelBtn" data-id="${c.channelId}">Подписаться</button></div>`).join('')}</div>`;
-        }
-        return `<div class="search-box"><input id="searchInput" placeholder="Поиск по юзернейму..."><button id="doSearchBtn">🔍 Найти</button></div>${resultsHtml}`;
-    }
-
-    function renderSettingsTab() {
-        return `<div class="card"><h2>⚙️ Настройки профиля</h2>
-        <div class="profile-header">
-            ${renderAvatar(currentUser.avatarIcon || '🐱', currentUser.avatarBg || '#ffb347')}
-            <div><strong>${currentUser.nickname}</strong> @${currentUser.username}</div>
-        </div>
-        <label>Смайлик аватара: <input id="avatarIcon" value="${currentUser.avatarIcon || '🐱'}"></label>
-        <label>Цвет фона: <input type="color" id="avatarBg" value="${currentUser.avatarBg || '#ffb347'}"></label>
-        <button id="saveAvatarBtn">Сохранить аватар</button>
-        <button id="logoutBtn" style="background:#d9534f; margin-top: 20px;">🚪 Выйти из аккаунта</button>
-        </div>`;
-    }
-
-    async function attachTabDynamicEvents() {
-        document.getElementById('backChatsBtn')?.addEventListener('click',()=>{ currentChatUserId=null; renderApp(); });
-        document.getElementById('backChannelsBtn')?.addEventListener('click',()=>{ currentChannelId=null; renderApp(); });
-        document.getElementById('backGroupsBtn')?.addEventListener('click',()=>{ currentGroupId=null; renderApp(); });
-        document.querySelectorAll('.startChatBtn').forEach(btn=> btn.addEventListener('click',(e)=>{ currentChatUserId=btn.dataset.id; renderApp(); }));
-        document.querySelectorAll('.openChannelBtn').forEach(btn=> btn.addEventListener('click',()=>{ currentChannelId=btn.dataset.id; renderApp(); }));
-        document.querySelectorAll('.openGroupBtn').forEach(btn=> btn.addEventListener('click',()=>{ currentGroupId=btn.dataset.id; renderApp(); }));
-        document.getElementById('createChanBtn')?.addEventListener('click', async()=>{
-            let name=document.getElementById('newChanName').value, uname=document.getElementById('newChanUsername').value;
-            if(name && uname) await createChannel(name, uname, currentUser.userId);
-            renderApp();
-        });
-        document.getElementById('createGrpBtn')?.addEventListener('click', async()=>{
-            let name=document.getElementById('newGrpName').value, uname=document.getElementById('newGrpUsername').value;
-            if(name && uname) await createGroup(name, uname, currentUser.userId);
-            renderApp();
-        });
-        document.getElementById('doSearchBtn')?.addEventListener('click', async()=>{
-            let q = document.getElementById('searchInput').value;
-            if(q) searchResults = await searchGlobal(q);
-            renderApp();
-        });
-        document.querySelectorAll('.msgUserBtn').forEach(btn=> btn.addEventListener('click',()=>{ currentChatUserId=btn.dataset.id; activeTab='chats'; renderApp(); }));
-        document.querySelectorAll('.subChannelBtn').forEach(btn=> btn.addEventListener('click', async()=>{ await subscribeToChannel(btn.dataset.id, currentUser.userId); showToast('Подписан'); renderApp(); }));
-        document.getElementById('saveAvatarBtn')?.addEventListener('click', async()=>{
-            let icon=document.getElementById('avatarIcon').value, bg=document.getElementById('avatarBg').value;
-            await updateUserAvatar(icon, bg); renderApp();
-        });
-        document.getElementById('logoutBtn')?.addEventListener('click',()=>{ currentUser=null; saveSession(null); if(presenceRef) presenceRef.off(); renderApp(); });
-    }
-
-    // Старт приложения с восстановлением сессии
     (async function init() {
         const restored = await restoreSession();
         if(restored) {
@@ -728,7 +1001,6 @@
             initPresence(currentUser.userId);
         }
         renderApp();
-        setInterval(()=>{}, 1000);
     })();
 </script>
 </body>
