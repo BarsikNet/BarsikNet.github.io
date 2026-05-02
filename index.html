@@ -30,20 +30,17 @@
             height: 90vh;
             background: rgba(255, 248, 225, 0.25);
             backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
             border-radius: 48px;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.3);
             overflow: hidden;
             display: flex;
             flex-direction: column;
-            transition: all 0.3s ease;
         }
 
         .main-content {
             flex: 1;
             overflow-y: auto;
             padding: 20px;
-            scroll-behavior: smooth;
         }
 
         .fullscreen-chat {
@@ -86,7 +83,6 @@
             display: flex;
             justify-content: space-around;
             padding: 12px 16px 20px;
-            border-radius: 32px 32px 0 0;
             gap: 8px;
         }
 
@@ -98,10 +94,8 @@
             font-weight: 600;
             padding: 8px 0;
             border-radius: 32px;
-            transition: 0.2s;
             cursor: pointer;
             background: rgba(255, 200, 120, 0.2);
-            backdrop-filter: blur(4px);
         }
 
         .tab-item i {
@@ -122,8 +116,6 @@
             padding: 32px 24px;
             max-width: 480px;
             margin: 10% auto;
-            backdrop-filter: blur(8px);
-            box-shadow: 0 20px 35px rgba(0,0,0,0.2);
         }
 
         input, button, textarea {
@@ -142,14 +134,10 @@
             color: white;
             font-weight: bold;
             cursor: pointer;
-            transition: 0.2s;
         }
-
-        button:active { transform: scale(0.97); }
 
         .card {
             background: rgba(255, 235, 205, 0.85);
-            backdrop-filter: blur(8px);
             border-radius: 32px;
             padding: 16px;
             margin-bottom: 16px;
@@ -179,7 +167,7 @@
             display: inline-block;
             margin-left: 8px;
         }
-        .online { background: #2ecc71; box-shadow:0 0 6px #2ecc71; }
+        .online { background: #2ecc71; }
         .offline { background: #95a5a6; }
 
         .post-card {
@@ -226,15 +214,10 @@
             color: white;
         }
         .verif-badge { color: #3498db; margin-left: 6px; font-size: 14px; }
-        .like-btn.liked { color: #e74c3c; }
         .flex-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
         
         @media (min-width: 1024px) {
             .app-container { width: 1000px; height: 85vh; }
-        }
-        @media (max-width: 600px) {
-            .tab-item span { font-size: 10px; }
-            .tab-item i { font-size: 20px; }
         }
         
         .toast-msg {
@@ -271,14 +254,8 @@
     let currentGroupId = null;
     let searchResults = null;
     let postsFilter = 'new';
-    let fullscreenMode = false;
     
     let messageListenerUnsub = null;
-    let channelListenerUnsub = null;
-    let groupListenerUnsub = null;
-
-    // Сохранённый текст ввода (чтобы не терялся)
-    let savedDraft = '';
 
     function showToast(msg) {
         let toast = document.createElement('div');
@@ -375,20 +352,46 @@
         await db.ref(`chats/${chatId}/messages`).push(msgObj);
     }
 
-    async function listenMessagesWith(userId, callback) {
-        const chatId = [currentUser.userId, userId].sort().join('_');
-        const msgRef = db.ref(`chats/${chatId}/messages`);
-        msgRef.off();
-        msgRef.on('value', (snap) => {
-            let msgs = [];
-            snap.forEach(m => msgs.push({ id: m.key, ...m.val() }));
-            msgs.sort((a,b)=>a.timestamp-b.timestamp);
-            callback(msgs);
-        });
-        return () => msgRef.off();
+    async function sendChannelMessage(channelId, userId, text) {
+        const chanSnap = await db.ref(`channels/${channelId}`).once('value');
+        if(chanSnap.val().ownerId !== userId) throw new Error('Только владелец может писать');
+        await db.ref(`channels/${channelId}/messages`).push({ from: userId, text, timestamp: Date.now() });
     }
 
-    // Посты
+    async function sendGroupMessage(groupId, userId, text) {
+        const grpSnap = await db.ref(`groups/${groupId}`).once('value');
+        if(!grpSnap.val().members[userId]) throw new Error('Вы не участник');
+        await db.ref(`groups/${groupId}/messages`).push({ from: userId, text, timestamp: Date.now() });
+    }
+
+    async function createChannel(channelName, channelUsername, ownerId) {
+        const chanId = 'chan_'+Date.now();
+        const newChan = {
+            channelId: chanId, name: channelName, username: channelUsername,
+            ownerId: ownerId, subscribers: { [ownerId]: true }, verified: false, messages: []
+        };
+        await db.ref(`channels/${chanId}`).set(newChan);
+        return newChan;
+    }
+
+    async function subscribeToChannel(channelId, userId) {
+        await db.ref(`channels/${channelId}/subscribers/${userId}`).set(true);
+    }
+
+    async function createGroup(groupName, groupUsername, ownerId) {
+        const groupId = 'grp_'+Date.now();
+        const newGrp = {
+            groupId, name: groupName, username: groupUsername, ownerId,
+            members: { [ownerId]: true }, messages: []
+        };
+        await db.ref(`groups/${groupId}`).set(newGrp);
+        return newGrp;
+    }
+
+    async function addMemberToGroup(groupId, memberUserId) {
+        await db.ref(`groups/${groupId}/members/${memberUserId}`).set(true);
+    }
+
     async function createPost(text) {
         const postId = 'post_' + Date.now();
         const post = {
@@ -398,6 +401,7 @@
             authorUsername: currentUser.username,
             authorAvatar: currentUser.avatarIcon,
             authorBg: currentUser.avatarBg,
+            authorVerified: currentUser.verified || false,
             text,
             likes: {},
             comments: [],
@@ -416,7 +420,6 @@
         } else {
             await postRef.set(true);
         }
-        // Обновляем счётчик лайков
         const likesSnap = await db.ref(`posts/${postId}/likes`).once('value');
         const count = likesSnap.exists() ? likesSnap.numChildren() : 0;
         await db.ref(`posts/${postId}/likesCount`).set(count);
@@ -441,66 +444,6 @@
         return posts;
     }
 
-    // Каналы
-    async function createChannel(channelName, channelUsername, ownerId) {
-        const chanId = 'chan_'+Date.now();
-        const newChan = {
-            channelId: chanId, name: channelName, username: channelUsername,
-            ownerId: ownerId, subscribers: { [ownerId]: true }, verified: false, messages: []
-        };
-        await db.ref(`channels/${chanId}`).set(newChan);
-        return newChan;
-    }
-
-    async function subscribeToChannel(channelId, userId) {
-        await db.ref(`channels/${channelId}/subscribers/${userId}`).set(true);
-    }
-
-    async function sendChannelMessage(channelId, userId, text) {
-        const chanSnap = await db.ref(`channels/${channelId}`).once('value');
-        if(chanSnap.val().ownerId !== userId) throw new Error('Только владелец может писать');
-        await db.ref(`channels/${channelId}/messages`).push({ from: userId, text, timestamp: Date.now() });
-    }
-
-    function listenChannelMessages(channelId, callback) {
-        db.ref(`channels/${channelId}/messages`).on('value', (snap) => {
-            let msgs = [];
-            snap.forEach(m => msgs.push(m.val()));
-            msgs.sort((a,b)=>a.timestamp-b.timestamp);
-            callback(msgs);
-        });
-    }
-
-    // Группы
-    async function createGroup(groupName, groupUsername, ownerId) {
-        const groupId = 'grp_'+Date.now();
-        const newGrp = {
-            groupId, name: groupName, username: groupUsername, ownerId,
-            members: { [ownerId]: true }, messages: []
-        };
-        await db.ref(`groups/${groupId}`).set(newGrp);
-        return newGrp;
-    }
-
-    async function addMemberToGroup(groupId, memberUserId) {
-        await db.ref(`groups/${groupId}/members/${memberUserId}`).set(true);
-    }
-
-    async function sendGroupMessage(groupId, userId, text) {
-        const grpSnap = await db.ref(`groups/${groupId}`).once('value');
-        if(!grpSnap.val().members[userId]) throw new Error('Вы не участник');
-        await db.ref(`groups/${groupId}/messages`).push({ from: userId, text, timestamp: Date.now() });
-    }
-
-    function listenGroupMessages(groupId, callback) {
-        db.ref(`groups/${groupId}/messages`).on('value', (snap) => {
-            let msgs = [];
-            snap.forEach(m => msgs.push(m.val()));
-            msgs.sort((a,b)=>a.timestamp-b.timestamp);
-            callback(msgs);
-        });
-    }
-
     async function updateUserAvatar(icon, bgColor) {
         await db.ref(`users/${currentUser.userId}/avatarIcon`).set(icon);
         await db.ref(`users/${currentUser.userId}/avatarBg`).set(bgColor);
@@ -513,34 +456,118 @@
         return `<div class="avatar-circle ${sizeClass}" style="background-color: ${bgColor || '#ffb347'};">${icon || '🐱'}</div>`;
     }
 
-    // === ОТРИСОВКА ВКЛАДОК ===
+    // Глобальные переменные для сохранения ввода
+    let postDraft = '';
+    let commentDrafts = {};
+
+    // Рендер приложения
+    async function renderApp() {
+        const root = document.getElementById('appRoot');
+        if(!currentUser) {
+            root.innerHTML = `
+                <div class="auth-panel">
+                    <h2 style="text-align:center">🐾 BarsikNet 3.0</h2>
+                    <div style="display:flex; gap:10px; margin:20px 0;">
+                        <button id="showLoginBtn">Вход</button>
+                        <button id="showRegBtn">Регистрация</button>
+                    </div>
+                    <div id="authForm">
+                        <input type="text" id="loginUsername" placeholder="Юзернейм">
+                        <input type="password" id="loginPassword" placeholder="Пароль">
+                        <button id="doLoginBtn">Войти</button>
+                    </div>
+                </div>
+            `;
+            document.getElementById('showLoginBtn')?.addEventListener('click', () => {
+                document.getElementById('authForm').innerHTML = `<input type="text" id="loginUsername" placeholder="Юзернейм"><input type="password" id="loginPassword" placeholder="Пароль"><button id="doLoginBtn">Войти</button>`;
+                document.getElementById('doLoginBtn')?.addEventListener('click', async () => {
+                    try {
+                        currentUser = await loginUser(document.getElementById('loginUsername').value, document.getElementById('loginPassword').value);
+                        saveSession(currentUser);
+                        initPresence(currentUser.userId);
+                        renderApp();
+                    } catch(e) { showToast(e.message); }
+                });
+            });
+            document.getElementById('showRegBtn')?.addEventListener('click', () => {
+                document.getElementById('authForm').innerHTML = `<input type="text" id="regNick" placeholder="Никнейм"><input type="text" id="regUsername" placeholder="Юзернейм"><input type="password" id="regPassword" placeholder="Пароль"><button id="doRegBtn">Зарегистрироваться</button>`;
+                document.getElementById('doRegBtn')?.addEventListener('click', async () => {
+                    try {
+                        currentUser = await registerUser(document.getElementById('regNick').value, document.getElementById('regUsername').value, document.getElementById('regPassword').value);
+                        saveSession(currentUser);
+                        initPresence(currentUser.userId);
+                        renderApp();
+                    } catch(e) { showToast(e.message); }
+                });
+            });
+            return;
+        }
+
+        let mainView = '';
+        if(activeTab === 'posts') mainView = await renderPostsTab();
+        else if(activeTab === 'chats') mainView = await renderChatsTab();
+        else if(activeTab === 'channels') mainView = await renderChannelsTab();
+        else if(activeTab === 'groups') mainView = await renderGroupsTab();
+        else if(activeTab === 'search') mainView = await renderSearchTab();
+        else if(activeTab === 'settings') mainView = renderSettingsTab();
+        
+        root.innerHTML = `
+            <div class="main-content" id="mainContent">${mainView}</div>
+            <div class="tab-bar">
+                <div class="tab-item ${activeTab==='posts'?'active':''}" data-tab="posts"><i class="fas fa-newspaper"></i><span>Посты</span></div>
+                <div class="tab-item ${activeTab==='chats'?'active':''}" data-tab="chats"><i class="fas fa-comment-dots"></i><span>ЛС</span></div>
+                <div class="tab-item ${activeTab==='channels'?'active':''}" data-tab="channels"><i class="fas fa-bullhorn"></i><span>Каналы</span></div>
+                <div class="tab-item ${activeTab==='groups'?'active':''}" data-tab="groups"><i class="fas fa-users"></i><span>Группы</span></div>
+                <div class="tab-item ${activeTab==='search'?'active':''}" data-tab="search"><i class="fas fa-search"></i><span>Поиск</span></div>
+                <div class="tab-item ${activeTab==='settings'?'active':''}" data-tab="settings"><i class="fas fa-cog"></i><span>Настройки</span></div>
+            </div>
+        `;
+        
+        document.querySelectorAll('.tab-item').forEach(tab => {
+            tab.addEventListener('click', () => {
+                activeTab = tab.dataset.tab;
+                currentChatUserId = null;
+                currentChannelId = null;
+                currentGroupId = null;
+                renderApp();
+            });
+        });
+        
+        attachEvents();
+    }
+
     async function renderPostsTab() {
         const posts = await getPosts(postsFilter);
-        const postsHtml = posts.map(post => `
-            <div class="card post-card" data-post-id="${post.postId}">
-                <div class="post-header">
-                    ${renderAvatar(post.authorAvatar, post.authorBg, 'avatar-sm')}
-                    <div>
-                        <strong>${post.authorName}</strong> @${post.authorUsername} ${post.authorVerified ? '<i class="fas fa-check-circle verif-badge"></i>' : ''}
-                        <div style="font-size: 12px; color: #6b4c2a;">${new Date(post.timestamp).toLocaleString()}</div>
+        
+        let postsHtml = '';
+        for(let post of posts) {
+            const userLiked = post.likes && post.likes[currentUser.userId];
+            postsHtml += `
+                <div class="card post-card" data-post-id="${post.postId}">
+                    <div class="post-header">
+                        ${renderAvatar(post.authorAvatar, post.authorBg, 'avatar-sm')}
+                        <div>
+                            <strong>${post.authorName}</strong> @${post.authorUsername} ${post.authorVerified ? '<i class="fas fa-check-circle verif-badge"></i>' : ''}
+                            <div style="font-size: 12px; color: #6b4c2a;">${new Date(post.timestamp).toLocaleString()}</div>
+                        </div>
+                    </div>
+                    <p style="margin: 12px 0;">${post.text}</p>
+                    <div class="post-actions">
+                        <button class="like-btn" data-post-id="${post.postId}"><i class="fas fa-heart ${userLiked ? 'liked' : ''}" style="${userLiked ? 'color:#e74c3c' : ''}"></i> ${post.likesCount || 0}</button>
+                        <button class="comment-toggle-btn" data-post-id="${post.postId}"><i class="fas fa-comment"></i> Комментировать</button>
+                    </div>
+                    <div class="comments-section" id="comments-${post.postId}" style="display: none;">
+                        <div id="comments-list-${post.postId}">
+                            ${post.comments && post.comments.length ? post.comments.map(c => `<div style="margin: 8px 0;"><strong>${c.userName}</strong>: ${c.text}</div>`).join('') : '<i>Нет комментариев</i>'}
+                        </div>
+                        <div class="flex-between" style="margin-top: 12px;">
+                            <input type="text" id="comment-input-${post.postId}" placeholder="Ваш комментарий..." value="${commentDrafts[post.postId] || ''}">
+                            <button class="add-comment-btn" data-post-id="${post.postId}" style="width: auto;">→</button>
+                        </div>
                     </div>
                 </div>
-                <p style="font-size: 16px; margin: 12px 0;">${post.text}</p>
-                <div class="post-actions">
-                    <button class="like-btn" data-post-id="${post.postId}"><i class="fas fa-heart"></i> ${post.likesCount || 0}</button>
-                    <button class="comment-toggle-btn" data-post-id="${post.postId}"><i class="fas fa-comment"></i> Комментировать</button>
-                </div>
-                <div class="comments-section" id="comments-${post.postId}" style="display: none;">
-                    <div id="comments-list-${post.postId}">
-                        ${post.comments && post.comments.length ? post.comments.map(c => `<div><strong>${c.userName}</strong>: ${c.text}</div>`).join('') : '<i>Нет комментариев</i>'}
-                    </div>
-                    <div class="flex-between" style="margin-top: 12px;">
-                        <input type="text" id="comment-input-${post.postId}" placeholder="Ваш комментарий...">
-                        <button class="add-comment-btn" data-post-id="${post.postId}" style="width: auto;">→</button>
-                    </div>
-                </div>
-            </div>
-        `).join('');
+            `;
+        }
         
         return `
             <div class="filter-buttons">
@@ -548,7 +575,7 @@
                 <button class="filter-btn ${postsFilter === 'popular' ? 'active' : ''}" data-filter="popular">🔥 Популярные</button>
             </div>
             <div class="card">
-                <textarea id="newPostText" rows="3" placeholder="Что нового, кот? 🐱"></textarea>
+                <textarea id="newPostText" rows="3" placeholder="Что нового, кот? 🐱">${postDraft}</textarea>
                 <button id="createPostBtn">📝 Опубликовать пост</button>
             </div>
             <div id="postsList">${postsHtml}</div>
@@ -557,13 +584,14 @@
 
     async function renderChatsTab() {
         if(currentChatUserId) {
-            return await renderFullscreenChat();
+            return await renderFullscreenChat('pm');
         }
         const contacts = await getContacts();
-        const contactsHtml = contacts.map(async u => {
+        let contactsHtml = '';
+        for(let u of contacts) {
             const status = (await db.ref(`users/${u.userId}/online`).once('value')).val();
-            return `
-                <div class="card user-row" style="display: flex; align-items: center; gap: 12px;">
+            contactsHtml += `
+                <div class="card" style="display: flex; align-items: center; gap: 12px;">
                     ${renderAvatar(u.avatarIcon, u.avatarBg, 'avatar-sm')}
                     <div style="flex:1">
                         <strong>${u.nickname}</strong> @${u.username} ${u.verified ? '<i class="fas fa-check-circle verif-badge"></i>' : ''}<br>
@@ -572,81 +600,14 @@
                     <button class="openChatBtn" data-userid="${u.userId}" data-name="${u.nickname}">💬</button>
                 </div>
             `;
-        });
-        const resolved = await Promise.all(contactsHtml);
+        }
         return `<h2><i class="fas fa-comment-dots"></i> Личные сообщения</h2>
-                <div>${resolved.length ? resolved.join('') : '<div class="card">Напишите кому-нибудь через поиск, чтобы начать диалог</div>'}</div>`;
-    }
-
-    async function renderFullscreenChat() {
-        const targetSnap = await db.ref(`users/${currentChatUserId}`).once('value');
-        const target = targetSnap.val();
-        if(!target) return '<div>Пользователь не найден</div>';
-        
-        // Создаём временный контейнер для полноэкранного чата
-        setTimeout(() => {
-            const chatContainer = document.getElementById('fullscreenChatContainer');
-            if(!chatContainer) return;
-            
-            let msgDiv = document.getElementById('fullscreenMsgList');
-            if(msgDiv) {
-                if(messageListenerUnsub) messageListenerUnsub();
-                listenMessagesWith(currentChatUserId, (msgs) => {
-                    const currentMsgDiv = document.getElementById('fullscreenMsgList');
-                    if(currentMsgDiv) {
-                        currentMsgDiv.innerHTML = msgs.map(m => `
-                            <div style="display: flex; justify-content: ${m.from === currentUser.userId ? 'flex-end' : 'flex-start'}; margin: 8px 0;">
-                                <div class="msg-bubble" style="background: ${m.from === currentUser.userId ? '#faa75e' : '#ffe1b3'}">
-                                    ${m.text}<br><small style="opacity:0.7">${new Date(m.timestamp).toLocaleTimeString()}</small>
-                                </div>
-                            </div>
-                        `).join('');
-                        currentMsgDiv.scrollTop = currentMsgDiv.scrollHeight;
-                    }
-                }).then(unsub => { messageListenerUnsub = unsub; });
-            }
-            
-            const inputField = document.getElementById('fullscreenMsgInput');
-            const sendBtn = document.getElementById('fullscreenSendBtn');
-            
-            const sendMessage = async () => {
-                const text = inputField.value;
-                if(text.trim()) {
-                    await sendPrivateMessage(currentChatUserId, text);
-                    inputField.value = '';
-                    savedDraft = '';
-                }
-            };
-            
-            sendBtn?.addEventListener('click', sendMessage);
-            inputField?.addEventListener('keypress', (e) => {
-                if(e.key === 'Enter') sendMessage();
-            });
-            // Сохраняем черновик
-            inputField?.addEventListener('input', (e) => { savedDraft = e.target.value; });
-            if(savedDraft) inputField.value = savedDraft;
-            
-        }, 50);
-        
-        return `
-            <div id="fullscreenChatContainer" class="fullscreen-chat">
-                <div class="chat-header">
-                    <button id="closeFullscreenBtn" style="width: auto; background: #ffaa66;"><i class="fas fa-arrow-left"></i> Назад</button>
-                    ${renderAvatar(target.avatarIcon, target.avatarBg, 'avatar-sm')}
-                    <div><strong>${target.nickname}</strong> @${target.username}</div>
-                </div>
-                <div class="chat-messages-area" id="fullscreenMsgList" style="flex: 1; overflow-y: auto;"></div>
-                <div class="chat-input-area">
-                    <input type="text" id="fullscreenMsgInput" placeholder="Сообщение..." style="flex: 1;">
-                    <button id="fullscreenSendBtn" style="width: auto;">Отправить</button>
-                </div>
-            </div>
-        `;
+                ${contactsHtml || '<div class="card">Напишите кому-нибудь через поиск, чтобы начать диалог</div>'}`;
     }
 
     async function renderChannelsTab() {
         if(currentChannelId) {
-            return await renderFullscreenChannel();
+            return await renderFullscreenChat('channel');
         }
         const channelsSnap = await db.ref('channels').once('value');
         let channels = [];
@@ -657,59 +618,9 @@
                 <h3>Создать канал</h3><input id="newChanName" placeholder="Название"><input id="newChanUsername" placeholder="Юзернейм"><button id="createChanBtn">Создать</button>`;
     }
 
-    async function renderFullscreenChannel() {
-        const chanSnap = await db.ref(`channels/${currentChannelId}`).once('value');
-        const chan = chanSnap.val();
-        
-        setTimeout(() => {
-            const container = document.getElementById('fullscreenChatContainer');
-            if(!container) return;
-            
-            listenChannelMessages(currentChannelId, (msgs) => {
-                const msgDiv = document.getElementById('fullscreenMsgList');
-                if(msgDiv) {
-                    msgDiv.innerHTML = msgs.map(m => `<div class="msg-bubble" style="margin:8px 0;">📢 ${m.text}<br><small>от @${m.from}</small></div>`).join('');
-                    msgDiv.scrollTop = msgDiv.scrollHeight;
-                }
-            });
-            
-            const inputField = document.getElementById('fullscreenMsgInput');
-            const sendBtn = document.getElementById('fullscreenSendBtn');
-            if(chan.ownerId !== currentUser.userId && sendBtn) {
-                sendBtn.disabled = true;
-                inputField.disabled = true;
-                inputField.placeholder = "Только для чтения";
-            } else {
-                sendBtn?.addEventListener('click', async () => {
-                    const text = inputField.value;
-                    if(text) {
-                        try {
-                            await sendChannelMessage(currentChannelId, currentUser.userId, text);
-                            inputField.value = '';
-                        } catch(e) { showToast(e.message); }
-                    }
-                });
-            }
-        }, 50);
-        
-        return `
-            <div id="fullscreenChatContainer" class="fullscreen-chat">
-                <div class="chat-header">
-                    <button id="closeFullscreenBtn" style="width: auto;"><i class="fas fa-arrow-left"></i> Назад</button>
-                    <div><strong>📺 ${chan.name}</strong> @${chan.username}</div>
-                </div>
-                <div class="chat-messages-area" id="fullscreenMsgList" style="flex: 1; overflow-y: auto;"></div>
-                <div class="chat-input-area">
-                    <input type="text" id="fullscreenMsgInput" placeholder="${chan.ownerId === currentUser.userId ? 'Сообщение в канал...' : 'Только чтение'}" style="flex: 1;">
-                    <button id="fullscreenSendBtn" style="width: auto;">📢</button>
-                </div>
-            </div>
-        `;
-    }
-
     async function renderGroupsTab() {
         if(currentGroupId) {
-            return await renderFullscreenGroup();
+            return await renderFullscreenChat('group');
         }
         const groupsSnap = await db.ref('groups').once('value');
         let groups = [];
@@ -719,38 +630,137 @@
                 <h3>Создать группу</h3><input id="newGrpName" placeholder="Название"><input id="newGrpUsername" placeholder="Юзернейм"><button id="createGrpBtn">Создать</button>`;
     }
 
-    async function renderFullscreenGroup() {
-        const grpSnap = await db.ref(`groups/${currentGroupId}`).once('value');
-        const group = grpSnap.val();
+    let chatDraft = '';
+
+    async function renderFullscreenChat(type) {
+        let title = '', target = null;
+        
+        if(type === 'pm') {
+            const targetSnap = await db.ref(`users/${currentChatUserId}`).once('value');
+            target = targetSnap.val();
+            title = `${target.nickname} @${target.username}`;
+        } else if(type === 'channel') {
+            const chanSnap = await db.ref(`channels/${currentChannelId}`).once('value');
+            target = chanSnap.val();
+            title = `📺 ${target.name} @${target.username}`;
+        } else if(type === 'group') {
+            const grpSnap = await db.ref(`groups/${currentGroupId}`).once('value');
+            target = grpSnap.val();
+            title = `👥 ${target.name}`;
+        }
         
         setTimeout(() => {
-            listenGroupMessages(currentGroupId, (msgs) => {
-                const msgDiv = document.getElementById('fullscreenMsgList');
-                if(msgDiv) {
+            const msgDiv = document.getElementById('fullscreenMsgList');
+            if(!msgDiv) return;
+            
+            const loadMessages = async () => {
+                if(type === 'pm') {
+                    if(messageListenerUnsub) messageListenerUnsub();
+                    const chatId = [currentUser.userId, currentChatUserId].sort().join('_');
+                    const msgsSnap = await db.ref(`chats/${chatId}/messages`).once('value');
+                    let msgs = [];
+                    msgsSnap.forEach(m => msgs.push(m.val()));
+                    msgs.sort((a,b)=>a.timestamp-b.timestamp);
+                    msgDiv.innerHTML = msgs.map(m => `
+                        <div style="display: flex; justify-content: ${m.from === currentUser.userId ? 'flex-end' : 'flex-start'}; margin: 8px 0;">
+                            <div class="msg-bubble" style="background: ${m.from === currentUser.userId ? '#faa75e' : '#ffe1b3'}">
+                                ${m.text}<br><small>${new Date(m.timestamp).toLocaleTimeString()}</small>
+                            </div>
+                        </div>
+                    `).join('');
+                    msgDiv.scrollTop = msgDiv.scrollHeight;
+                    
+                    db.ref(`chats/${chatId}/messages`).on('child_added', (snap) => {
+                        const m = snap.val();
+                        const msgHtml = `
+                            <div style="display: flex; justify-content: ${m.from === currentUser.userId ? 'flex-end' : 'flex-start'}; margin: 8px 0;">
+                                <div class="msg-bubble" style="background: ${m.from === currentUser.userId ? '#faa75e' : '#ffe1b3'}">
+                                    ${m.text}<br><small>${new Date(m.timestamp).toLocaleTimeString()}</small>
+                                </div>
+                            </div>
+                        `;
+                        msgDiv.insertAdjacentHTML('beforeend', msgHtml);
+                        msgDiv.scrollTop = msgDiv.scrollHeight;
+                    });
+                } else if(type === 'channel') {
+                    db.ref(`channels/${currentChannelId}/messages`).off();
+                    const msgsSnap = await db.ref(`channels/${currentChannelId}/messages`).once('value');
+                    let msgs = [];
+                    msgsSnap.forEach(m => msgs.push(m.val()));
+                    msgs.sort((a,b)=>a.timestamp-b.timestamp);
+                    msgDiv.innerHTML = msgs.map(m => `<div class="msg-bubble" style="margin:8px 0;">📢 ${m.text}<br><small>от @${m.from}</small></div>`).join('');
+                    msgDiv.scrollTop = msgDiv.scrollHeight;
+                    
+                    db.ref(`channels/${currentChannelId}/messages`).on('child_added', (snap) => {
+                        const m = snap.val();
+                        msgDiv.insertAdjacentHTML('beforeend', `<div class="msg-bubble" style="margin:8px 0;">📢 ${m.text}<br><small>от @${m.from}</small></div>`);
+                        msgDiv.scrollTop = msgDiv.scrollHeight;
+                    });
+                } else if(type === 'group') {
+                    db.ref(`groups/${currentGroupId}/messages`).off();
+                    const msgsSnap = await db.ref(`groups/${currentGroupId}/messages`).once('value');
+                    let msgs = [];
+                    msgsSnap.forEach(m => msgs.push(m.val()));
+                    msgs.sort((a,b)=>a.timestamp-b.timestamp);
                     msgDiv.innerHTML = msgs.map(m => `<div style="margin:8px 0; padding:8px; background:#ffe5c4; border-radius:20px;"><strong>${m.from}</strong>: ${m.text}</div>`).join('');
                     msgDiv.scrollTop = msgDiv.scrollHeight;
+                    
+                    db.ref(`groups/${currentGroupId}/messages`).on('child_added', (snap) => {
+                        const m = snap.val();
+                        msgDiv.insertAdjacentHTML('beforeend', `<div style="margin:8px 0; padding:8px; background:#ffe5c4; border-radius:20px;"><strong>${m.from}</strong>: ${m.text}</div>`);
+                        msgDiv.scrollTop = msgDiv.scrollHeight;
+                    });
                 }
-            });
+            };
+            loadMessages();
             
             const inputField = document.getElementById('fullscreenMsgInput');
             const sendBtn = document.getElementById('fullscreenSendBtn');
-            sendBtn?.addEventListener('click', async () => {
+            
+            if(inputField) inputField.value = chatDraft;
+            
+            const sendMessage = async () => {
                 const text = inputField.value;
-                if(text) {
-                    await sendGroupMessage(currentGroupId, currentUser.userId, text);
+                if(text.trim()) {
+                    if(type === 'pm') {
+                        await sendPrivateMessage(currentChatUserId, text);
+                    } else if(type === 'channel') {
+                        if(target.ownerId === currentUser.userId) {
+                            await sendChannelMessage(currentChannelId, currentUser.userId, text);
+                        } else {
+                            showToast('Только владелец может писать в канал');
+                            return;
+                        }
+                    } else if(type === 'group') {
+                        await sendGroupMessage(currentGroupId, currentUser.userId, text);
+                    }
                     inputField.value = '';
+                    chatDraft = '';
                 }
-            });
+            };
+            
+            sendBtn?.addEventListener('click', sendMessage);
+            inputField?.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
+            inputField?.addEventListener('input', (e) => { chatDraft = e.target.value; });
+            
+            if(type === 'channel' && target.ownerId !== currentUser.userId) {
+                inputField.disabled = true;
+                inputField.placeholder = "Только для чтения";
+                sendBtn.disabled = true;
+            }
         }, 50);
+        
+        const avatarHtml = type === 'pm' ? renderAvatar(target?.avatarIcon, target?.avatarBg, 'avatar-sm') : '';
         
         return `
             <div id="fullscreenChatContainer" class="fullscreen-chat">
                 <div class="chat-header">
-                    <button id="closeFullscreenBtn" style="width: auto;"><i class="fas fa-arrow-left"></i> Назад</button>
-                    <div><strong>👥 ${group.name}</strong></div>
-                    <button id="groupInfoBtn" style="width: auto; background: #ffaa66;" onclick="alert('Владелец может добавлять участников через профиль группы')">ℹ️ О группе</button>
+                    <button id="closeFullscreenBtn" style="width: auto; background: #ffaa66;"><i class="fas fa-arrow-left"></i> Назад</button>
+                    ${avatarHtml}
+                    <div><strong>${title}</strong></div>
+                    ${type === 'group' && target?.ownerId === currentUser.userId ? `<button id="addMemberFullBtn" style="width: auto;">➕ Добавить участника</button>` : ''}
                 </div>
-                <div class="chat-messages-area" id="fullscreenMsgList" style="flex: 1; overflow-y: auto;"></div>
+                <div class="chat-messages-area" id="fullscreenMsgList"></div>
                 <div class="chat-input-area">
                     <input type="text" id="fullscreenMsgInput" placeholder="Сообщение..." style="flex: 1;">
                     <button id="fullscreenSendBtn" style="width: auto;">Отправить</button>
@@ -762,8 +772,8 @@
     async function renderSearchTab() {
         let resultsHtml = '';
         if(searchResults) {
-            resultsHtml = `<h4>Люди:</h4>${searchResults.users.map(u => `<div class="card flex-between">${renderAvatar(u.avatarIcon, u.avatarBg, 'avatar-sm')}<div><strong>${u.nickname}</strong> @${u.username}</div><button class="msgUserBtn" data-id="${u.userId}">Написать</button></div>`).join('')}
-            <h4>Каналы:</h4>${searchResults.channels.map(c => `<div class="card flex-between"><div><strong>📢 ${c.name}</strong> @${c.username}</div><button class="subChannelBtn" data-id="${c.channelId}">Подписаться</button></div>`).join('')}`;
+            resultsHtml = `<h4>Люди:</h4>${searchResults.users.map(u => `<div class="card flex-between">${renderAvatar(u.avatarIcon, u.avatarBg, 'avatar-sm')}<div><strong>${u.nickname}</strong> @${u.username} ${u.verified ? '<i class="fas fa-check-circle verif-badge"></i>' : ''}</div><button class="msgUserBtn" data-id="${u.userId}">Написать</button></div>`).join('')}
+            <h4>Каналы:</h4>${searchResults.channels.map(c => `<div class="card flex-between"><div><strong>📢 ${c.name}</strong> @${c.username} ${c.verified ? '<i class="fas fa-check-circle verif-badge"></i>' : ''}</div><button class="subChannelBtn" data-id="${c.channelId}">Подписаться</button></div>`).join('')}`;
         }
         return `<div class="search-box"><input id="searchInput" placeholder="Поиск по юзернейму..."><button id="doSearchBtn">🔍 Найти</button></div>${resultsHtml}`;
     }
@@ -773,7 +783,10 @@
             <h2>⚙️ Настройки профиля</h2>
             <div class="flex-between" style="justify-content: flex-start; gap: 20px; margin-bottom: 20px;">
                 ${renderAvatar(currentUser.avatarIcon, currentUser.avatarBg)}
-                <div><strong>${currentUser.nickname}</strong> @${currentUser.username}</div>
+                <div>
+                    <strong>${currentUser.nickname}</strong> @${currentUser.username}
+                    ${currentUser.verified ? '<i class="fas fa-check-circle verif-badge"></i>' : ''}
+                </div>
             </div>
             <label>Смайлик: <input id="avatarIcon" value="${currentUser.avatarIcon || '🐱'}"></label>
             <label>Цвет фона: <input type="color" id="avatarBg" value="${currentUser.avatarBg || '#ffb347'}"></label>
@@ -782,32 +795,30 @@
         </div>`;
     }
 
-    // Обработчики событий
     function attachEvents() {
-        // Фильтры постов
         document.querySelectorAll('.filter-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
+            btn.addEventListener('click', async () => {
                 postsFilter = btn.dataset.filter;
-                await renderApp();
+                renderApp();
             });
         });
         
-        // Создание поста
         document.getElementById('createPostBtn')?.addEventListener('click', async () => {
-            const text = document.getElementById('newPostText').value;
-            if(text) {
-                await createPost(text);
-                document.getElementById('newPostText').value = '';
-                await renderApp();
+            const textarea = document.getElementById('newPostText');
+            if(textarea.value.trim()) {
+                await createPost(textarea.value);
+                postDraft = '';
+                renderApp();
             }
         });
         
-        // Лайки и комментарии (делегирование)
+        document.getElementById('newPostText')?.addEventListener('input', (e) => { postDraft = e.target.value; });
+        
         document.querySelectorAll('.like-btn').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 const postId = btn.dataset.postId;
                 await toggleLike(postId);
-                await renderApp();
+                renderApp();
             });
         });
         
@@ -823,15 +834,21 @@
             btn.addEventListener('click', async (e) => {
                 const postId = btn.dataset.postId;
                 const input = document.getElementById(`comment-input-${postId}`);
-                if(input.value) {
+                if(input.value.trim()) {
                     await addComment(postId, input.value);
-                    input.value = '';
-                    await renderApp();
+                    delete commentDrafts[postId];
+                    renderApp();
                 }
             });
         });
         
-        // Чаты
+        document.querySelectorAll('.comment-input-field').forEach(inp => {
+            inp?.addEventListener('input', (e) => {
+                const postId = e.target.id.replace('comment-input-', '');
+                commentDrafts[postId] = e.target.value;
+            });
+        });
+        
         document.querySelectorAll('.openChatBtn').forEach(btn => {
             btn.addEventListener('click', () => {
                 currentChatUserId = btn.dataset.userid;
@@ -857,7 +874,6 @@
             currentChatUserId = null;
             currentChannelId = null;
             currentGroupId = null;
-            if(messageListenerUnsub) { messageListenerUnsub(); messageListenerUnsub = null; }
             renderApp();
         });
         
@@ -915,83 +931,21 @@
             saveSession(null);
             renderApp();
         });
-    }
-
-    async function renderApp() {
-        const root = document.getElementById('appRoot');
-        if(!currentUser) {
-            // Форма входа (упрощённо)
-            root.innerHTML = `
-                <div class="auth-panel">
-                    <h2 style="text-align:center">🐾 BarsikNet 3.0</h2>
-                    <div style="display:flex; gap:10px; margin:20px 0;">
-                        <button id="showLoginBtn">Вход</button>
-                        <button id="showRegBtn">Регистрация</button>
-                    </div>
-                    <div id="authForm">
-                        <input type="text" id="loginUsername" placeholder="Юзернейм">
-                        <input type="password" id="loginPassword" placeholder="Пароль">
-                        <button id="doLoginBtn">Войти</button>
-                    </div>
-                </div>
-            `;
-            document.getElementById('showLoginBtn')?.addEventListener('click', () => {
-                document.getElementById('authForm').innerHTML = `<input type="text" id="loginUsername" placeholder="Юзернейм"><input type="password" id="loginPassword" placeholder="Пароль"><button id="doLoginBtn">Войти</button>`;
-                document.getElementById('doLoginBtn')?.addEventListener('click', async () => {
-                    try {
-                        currentUser = await loginUser(document.getElementById('loginUsername').value, document.getElementById('loginPassword').value);
-                        saveSession(currentUser);
-                        initPresence(currentUser.userId);
-                        renderApp();
-                    } catch(e) { showToast(e.message); }
-                });
-            });
-            document.getElementById('showRegBtn')?.addEventListener('click', () => {
-                document.getElementById('authForm').innerHTML = `<input type="text" id="regNick" placeholder="Никнейм"><input type="text" id="regUsername" placeholder="Юзернейм"><input type="password" id="regPassword" placeholder="Пароль"><button id="doRegBtn">Зарегистрироваться</button>`;
-                document.getElementById('doRegBtn')?.addEventListener('click', async () => {
-                    try {
-                        currentUser = await registerUser(document.getElementById('regNick').value, document.getElementById('regUsername').value, document.getElementById('regPassword').value);
-                        saveSession(currentUser);
-                        initPresence(currentUser.userId);
-                        renderApp();
-                    } catch(e) { showToast(e.message); }
-                });
-            });
-            return;
-        }
         
-        let mainView = '';
-        if(activeTab === 'posts') mainView = await renderPostsTab();
-        else if(activeTab === 'chats') mainView = await renderChatsTab();
-        else if(activeTab === 'channels') mainView = await renderChannelsTab();
-        else if(activeTab === 'groups') mainView = await renderGroupsTab();
-        else if(activeTab === 'search') mainView = await renderSearchTab();
-        else if(activeTab === 'settings') mainView = renderSettingsTab();
-        
-        root.innerHTML = `
-            <div class="main-content" id="mainContent">${mainView}</div>
-            <div class="tab-bar">
-                <div class="tab-item ${activeTab==='posts'?'active':''}" data-tab="posts"><i class="fas fa-newspaper"></i><span>Посты</span></div>
-                <div class="tab-item ${activeTab==='chats'?'active':''}" data-tab="chats"><i class="fas fa-comment-dots"></i><span>ЛС</span></div>
-                <div class="tab-item ${activeTab==='channels'?'active':''}" data-tab="channels"><i class="fas fa-bullhorn"></i><span>Каналы</span></div>
-                <div class="tab-item ${activeTab==='groups'?'active':''}" data-tab="groups"><i class="fas fa-users"></i><span>Группы</span></div>
-                <div class="tab-item ${activeTab==='search'?'active':''}" data-tab="search"><i class="fas fa-search"></i><span>Поиск</span></div>
-                <div class="tab-item ${activeTab==='settings'?'active':''}" data-tab="settings"><i class="fas fa-cog"></i><span>Настройки</span></div>
-            </div>
-        `;
-        
-        document.querySelectorAll('.tab-item').forEach(tab => {
-            tab.addEventListener('click', () => {
-                activeTab = tab.dataset.tab;
-                currentChatUserId = null;
-                currentChannelId = null;
-                currentGroupId = null;
-                if(messageListenerUnsub) { messageListenerUnsub(); messageListenerUnsub = null; }
-                renderApp();
-            });
+        document.getElementById('addMemberFullBtn')?.addEventListener('click', async () => {
+            const username = prompt('Введите юзернейм пользователя для добавления в группу:');
+            if(username) {
+                const snap = await db.ref('users').orderByChild('username').equalTo(username).once('value');
+                let uid = null;
+                snap.forEach(u => uid = u.val().userId);
+                if(uid) {
+                    await addMemberToGroup(currentGroupId, uid);
+                    showToast('Участник добавлен');
+                } else {
+                    showToast('Пользователь не найден');
+                }
+            }
         });
-        
-        attachEvents();
     }
 
     (async function init() {
