@@ -31,7 +31,7 @@
             background: rgba(255, 248, 225, 0.25);
             backdrop-filter: blur(20px);
             border-radius: 48px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.3);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
             overflow: hidden;
             display: flex;
             flex-direction: column;
@@ -170,9 +170,7 @@
         .online { background: #2ecc71; }
         .offline { background: #95a5a6; }
 
-        .post-card {
-            margin-bottom: 24px;
-        }
+        .post-card { margin-bottom: 24px; }
         .post-header {
             display: flex;
             align-items: center;
@@ -255,7 +253,10 @@
     let searchResults = null;
     let postsFilter = 'new';
     
-    let messageListenerUnsub = null;
+    // Сохранение черновиков
+    let postDraft = '';
+    let commentDrafts = {};
+    let chatDraft = '';
 
     function showToast(msg) {
         let toast = document.createElement('div');
@@ -265,10 +266,13 @@
         setTimeout(() => toast.remove(), 2000);
     }
 
-    function getUserId(username) { return username.toLowerCase().replace(/[^a-z0-9]/g, '') + '_' + Date.now(); }
+    // Простая генерация ID (только буквы и цифры, без лишних символов)
+    function getUserId(username) { 
+        return username.toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
     
     function saveSession(user) {
-        if(user) localStorage.setItem('barsik_session', JSON.stringify({ userId: user.userId, username: user.username }));
+        if(user) localStorage.setItem('barsik_session', JSON.stringify({ userId: user.userId }));
         else localStorage.removeItem('barsik_session');
     }
 
@@ -315,6 +319,11 @@
         return snap.exists() ? snap.val() : null;
     }
 
+    async function getUserNameById(userId) {
+        const snap = await db.ref(`users/${userId}`).once('value');
+        return snap.exists() ? snap.val().nickname : userId;
+    }
+
     async function searchGlobal(query) {
         const usersSnap = await db.ref('users').orderByChild('username').equalTo(query).once('value');
         const channelsSnap = await db.ref('channels').orderByChild('username').equalTo(query).once('value');
@@ -328,44 +337,74 @@
     async function getContacts() {
         const chatsRef = db.ref('chats');
         const snapshot = await chatsRef.once('value');
-        const contacts = new Set();
+        const contactsMap = new Map();
+        
         snapshot.forEach(chat => {
             const chatId = chat.key;
             const participants = chatId.split('_');
             if(participants.includes(currentUser.userId)) {
                 const otherId = participants[0] === currentUser.userId ? participants[1] : participants[0];
-                contacts.add(otherId);
+                let lastMsgTime = 0;
+                chat.child('messages').forEach(msg => {
+                    const msgTime = msg.val().timestamp;
+                    if(msgTime > lastMsgTime) lastMsgTime = msgTime;
+                });
+                if(!contactsMap.has(otherId) || contactsMap.get(otherId).lastMsg < lastMsgTime) {
+                    contactsMap.set(otherId, { userId: otherId, lastMsg: lastMsgTime });
+                }
             }
         });
+        
         const contactUsers = [];
-        for(let userId of contacts) {
+        for(let [userId, data] of contactsMap) {
             const userSnap = await db.ref(`users/${userId}`).once('value');
-            if(userSnap.exists()) contactUsers.push(userSnap.val());
+            if(userSnap.exists()) {
+                const user = userSnap.val();
+                user.lastMsgTime = data.lastMsg;
+                contactUsers.push(user);
+            }
         }
+        contactUsers.sort((a,b) => (b.lastMsgTime || 0) - (a.lastMsgTime || 0));
         return contactUsers;
     }
 
     async function sendPrivateMessage(toUserId, text) {
         if(!text.trim()) return;
         const chatId = [currentUser.userId, toUserId].sort().join('_');
-        const msgObj = { from: currentUser.userId, text, timestamp: Date.now() };
+        const msgObj = { 
+            from: currentUser.userId, 
+            fromName: currentUser.nickname,
+            text: text.trim(), 
+            timestamp: Date.now(),
+            read: false
+        };
         await db.ref(`chats/${chatId}/messages`).push(msgObj);
     }
 
     async function sendChannelMessage(channelId, userId, text) {
         const chanSnap = await db.ref(`channels/${channelId}`).once('value');
         if(chanSnap.val().ownerId !== userId) throw new Error('Только владелец может писать');
-        await db.ref(`channels/${channelId}/messages`).push({ from: userId, text, timestamp: Date.now() });
+        await db.ref(`channels/${channelId}/messages`).push({ 
+            from: userId, 
+            fromName: currentUser.nickname,
+            text, 
+            timestamp: Date.now() 
+        });
     }
 
     async function sendGroupMessage(groupId, userId, text) {
         const grpSnap = await db.ref(`groups/${groupId}`).once('value');
         if(!grpSnap.val().members[userId]) throw new Error('Вы не участник');
-        await db.ref(`groups/${groupId}/messages`).push({ from: userId, text, timestamp: Date.now() });
+        await db.ref(`groups/${groupId}/messages`).push({ 
+            from: userId, 
+            fromName: currentUser.nickname,
+            text, 
+            timestamp: Date.now() 
+        });
     }
 
     async function createChannel(channelName, channelUsername, ownerId) {
-        const chanId = 'chan_'+Date.now();
+        const chanId = 'chan_' + Date.now();
         const newChan = {
             channelId: chanId, name: channelName, username: channelUsername,
             ownerId: ownerId, subscribers: { [ownerId]: true }, verified: false, messages: []
@@ -379,7 +418,7 @@
     }
 
     async function createGroup(groupName, groupUsername, ownerId) {
-        const groupId = 'grp_'+Date.now();
+        const groupId = 'grp_' + Date.now();
         const newGrp = {
             groupId, name: groupName, username: groupUsername, ownerId,
             members: { [ownerId]: true }, messages: []
@@ -393,6 +432,7 @@
     }
 
     async function createPost(text) {
+        if(!text.trim()) return;
         const postId = 'post_' + Date.now();
         const post = {
             postId,
@@ -402,7 +442,7 @@
             authorAvatar: currentUser.avatarIcon,
             authorBg: currentUser.avatarBg,
             authorVerified: currentUser.verified || false,
-            text,
+            text: text.trim(),
             likes: {},
             comments: [],
             timestamp: Date.now(),
@@ -426,10 +466,11 @@
     }
 
     async function addComment(postId, text) {
+        if(!text.trim()) return;
         const comment = {
             userId: currentUser.userId,
             userName: currentUser.nickname,
-            text,
+            text: text.trim(),
             timestamp: Date.now()
         };
         await db.ref(`posts/${postId}/comments`).push(comment);
@@ -456,11 +497,6 @@
         return `<div class="avatar-circle ${sizeClass}" style="background-color: ${bgColor || '#ffb347'};">${icon || '🐱'}</div>`;
     }
 
-    // Глобальные переменные для сохранения ввода
-    let postDraft = '';
-    let commentDrafts = {};
-
-    // Рендер приложения
     async function renderApp() {
         const root = document.getElementById('appRoot');
         if(!currentUser) {
@@ -526,9 +562,9 @@
         document.querySelectorAll('.tab-item').forEach(tab => {
             tab.addEventListener('click', () => {
                 activeTab = tab.dataset.tab;
-                currentChatUserId = null;
-                currentChannelId = null;
-                currentGroupId = null;
+                if(activeTab !== 'chats') currentChatUserId = null;
+                if(activeTab !== 'channels') currentChannelId = null;
+                if(activeTab !== 'groups') currentGroupId = null;
                 renderApp();
             });
         });
@@ -553,7 +589,7 @@
                     </div>
                     <p style="margin: 12px 0;">${post.text}</p>
                     <div class="post-actions">
-                        <button class="like-btn" data-post-id="${post.postId}"><i class="fas fa-heart ${userLiked ? 'liked' : ''}" style="${userLiked ? 'color:#e74c3c' : ''}"></i> ${post.likesCount || 0}</button>
+                        <button class="like-btn" data-post-id="${post.postId}"><i class="fas fa-heart" style="${userLiked ? 'color:#e74c3c' : ''}"></i> ${post.likesCount || 0}</button>
                         <button class="comment-toggle-btn" data-post-id="${post.postId}"><i class="fas fa-comment"></i> Комментировать</button>
                     </div>
                     <div class="comments-section" id="comments-${post.postId}" style="display: none;">
@@ -597,7 +633,7 @@
                         <strong>${u.nickname}</strong> @${u.username} ${u.verified ? '<i class="fas fa-check-circle verif-badge"></i>' : ''}<br>
                         <span><span class="online-status ${status ? 'online' : 'offline'}"></span> ${status ? 'В сети' : 'Не в сети'}</span>
                     </div>
-                    <button class="openChatBtn" data-userid="${u.userId}" data-name="${u.nickname}">💬</button>
+                    <button class="openChatBtn" data-userid="${u.userId}">💬</button>
                 </div>
             `;
         }
@@ -630,15 +666,14 @@
                 <h3>Создать группу</h3><input id="newGrpName" placeholder="Название"><input id="newGrpUsername" placeholder="Юзернейм"><button id="createGrpBtn">Создать</button>`;
     }
 
-    let chatDraft = '';
-
     async function renderFullscreenChat(type) {
-        let title = '', target = null;
+        let title = '', target = null, avatarHtml = '';
         
         if(type === 'pm') {
             const targetSnap = await db.ref(`users/${currentChatUserId}`).once('value');
             target = targetSnap.val();
             title = `${target.nickname} @${target.username}`;
+            avatarHtml = renderAvatar(target?.avatarIcon, target?.avatarBg, 'avatar-sm');
         } else if(type === 'channel') {
             const chanSnap = await db.ref(`channels/${currentChannelId}`).once('value');
             target = chanSnap.val();
@@ -655,7 +690,6 @@
             
             const loadMessages = async () => {
                 if(type === 'pm') {
-                    if(messageListenerUnsub) messageListenerUnsub();
                     const chatId = [currentUser.userId, currentChatUserId].sort().join('_');
                     const msgsSnap = await db.ref(`chats/${chatId}/messages`).once('value');
                     let msgs = [];
@@ -672,14 +706,13 @@
                     
                     db.ref(`chats/${chatId}/messages`).on('child_added', (snap) => {
                         const m = snap.val();
-                        const msgHtml = `
+                        msgDiv.insertAdjacentHTML('beforeend', `
                             <div style="display: flex; justify-content: ${m.from === currentUser.userId ? 'flex-end' : 'flex-start'}; margin: 8px 0;">
                                 <div class="msg-bubble" style="background: ${m.from === currentUser.userId ? '#faa75e' : '#ffe1b3'}">
                                     ${m.text}<br><small>${new Date(m.timestamp).toLocaleTimeString()}</small>
                                 </div>
                             </div>
-                        `;
-                        msgDiv.insertAdjacentHTML('beforeend', msgHtml);
+                        `);
                         msgDiv.scrollTop = msgDiv.scrollHeight;
                     });
                 } else if(type === 'channel') {
@@ -688,12 +721,12 @@
                     let msgs = [];
                     msgsSnap.forEach(m => msgs.push(m.val()));
                     msgs.sort((a,b)=>a.timestamp-b.timestamp);
-                    msgDiv.innerHTML = msgs.map(m => `<div class="msg-bubble" style="margin:8px 0;">📢 ${m.text}<br><small>от @${m.from}</small></div>`).join('');
+                    msgDiv.innerHTML = msgs.map(m => `<div class="msg-bubble" style="margin:8px 0;">📢 ${m.text}<br><small>от ${m.fromName || m.from}</small></div>`).join('');
                     msgDiv.scrollTop = msgDiv.scrollHeight;
                     
                     db.ref(`channels/${currentChannelId}/messages`).on('child_added', (snap) => {
                         const m = snap.val();
-                        msgDiv.insertAdjacentHTML('beforeend', `<div class="msg-bubble" style="margin:8px 0;">📢 ${m.text}<br><small>от @${m.from}</small></div>`);
+                        msgDiv.insertAdjacentHTML('beforeend', `<div class="msg-bubble" style="margin:8px 0;">📢 ${m.text}<br><small>от ${m.fromName || m.from}</small></div>`);
                         msgDiv.scrollTop = msgDiv.scrollHeight;
                     });
                 } else if(type === 'group') {
@@ -702,12 +735,12 @@
                     let msgs = [];
                     msgsSnap.forEach(m => msgs.push(m.val()));
                     msgs.sort((a,b)=>a.timestamp-b.timestamp);
-                    msgDiv.innerHTML = msgs.map(m => `<div style="margin:8px 0; padding:8px; background:#ffe5c4; border-radius:20px;"><strong>${m.from}</strong>: ${m.text}</div>`).join('');
+                    msgDiv.innerHTML = msgs.map(m => `<div style="margin:8px 0; padding:8px; background:#ffe5c4; border-radius:20px;"><strong>${m.fromName || m.from}</strong>: ${m.text}</div>`).join('');
                     msgDiv.scrollTop = msgDiv.scrollHeight;
                     
                     db.ref(`groups/${currentGroupId}/messages`).on('child_added', (snap) => {
                         const m = snap.val();
-                        msgDiv.insertAdjacentHTML('beforeend', `<div style="margin:8px 0; padding:8px; background:#ffe5c4; border-radius:20px;"><strong>${m.from}</strong>: ${m.text}</div>`);
+                        msgDiv.insertAdjacentHTML('beforeend', `<div style="margin:8px 0; padding:8px; background:#ffe5c4; border-radius:20px;"><strong>${m.fromName || m.from}</strong>: ${m.text}</div>`);
                         msgDiv.scrollTop = msgDiv.scrollHeight;
                     });
                 }
@@ -750,7 +783,9 @@
             }
         }, 50);
         
-        const avatarHtml = type === 'pm' ? renderAvatar(target?.avatarIcon, target?.avatarBg, 'avatar-sm') : '';
+        const addMemberBtn = (type === 'group' && target?.ownerId === currentUser.userId) 
+            ? `<button id="addMemberFullBtn" style="width: auto;">➕ Добавить участника</button>` 
+            : '';
         
         return `
             <div id="fullscreenChatContainer" class="fullscreen-chat">
@@ -758,7 +793,7 @@
                     <button id="closeFullscreenBtn" style="width: auto; background: #ffaa66;"><i class="fas fa-arrow-left"></i> Назад</button>
                     ${avatarHtml}
                     <div><strong>${title}</strong></div>
-                    ${type === 'group' && target?.ownerId === currentUser.userId ? `<button id="addMemberFullBtn" style="width: auto;">➕ Добавить участника</button>` : ''}
+                    ${addMemberBtn}
                 </div>
                 <div class="chat-messages-area" id="fullscreenMsgList"></div>
                 <div class="chat-input-area">
@@ -842,7 +877,7 @@
             });
         });
         
-        document.querySelectorAll('.comment-input-field').forEach(inp => {
+        document.querySelectorAll('.comment-input-field')?.forEach(inp => {
             inp?.addEventListener('input', (e) => {
                 const postId = e.target.id.replace('comment-input-', '');
                 commentDrafts[postId] = e.target.value;
@@ -941,6 +976,7 @@
                 if(uid) {
                     await addMemberToGroup(currentGroupId, uid);
                     showToast('Участник добавлен');
+                    renderApp();
                 } else {
                     showToast('Пользователь не найден');
                 }
