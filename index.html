@@ -26,14 +26,14 @@
         button:active { transform: scale(0.97); }
         .card { background: rgba(255, 235, 205, 0.85); border-radius: 32px; padding: 16px; margin-bottom: 16px; border: 1px solid rgba(255,160,50,0.6); }
         .avatar-circle { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 32px; flex-shrink: 0; }
-        .avatar-sm { width: 48px; height: 48px; font-size: 28px; }
+        .avatar-sm { width: 40px; height: 40px; font-size: 24px; }
         .online-status { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-left: 8px; }
         .online { background: #2ecc71; }
         .offline { background: #95a5a6; }
-        .post-card, .channel-msg-card { margin-bottom: 24px; }
-        .post-header, .channel-msg-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-        .post-actions, .msg-actions { display: flex; gap: 24px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #ffcc88; }
-        .post-actions button, .msg-actions button { width: auto; background: transparent; color: #f57c00; margin: 0; padding: 8px 16px; cursor: pointer; }
+        .post-card { margin-bottom: 24px; }
+        .post-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+        .post-actions { display: flex; gap: 24px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #ffcc88; }
+        .post-actions button { width: auto; background: transparent; color: #f57c00; margin: 0; padding: 8px 16px; cursor: pointer; }
         .comments-section { margin-top: 12px; padding-left: 20px; border-left: 2px solid #f57c00; }
         .filter-buttons { display: flex; gap: 12px; margin-bottom: 20px; }
         .filter-btn { background: #ffd8a8; color: #4a2a0e; width: auto; padding: 8px 24px; cursor: pointer; }
@@ -41,6 +41,13 @@
         .verif-badge { color: #3498db; margin-left: 6px; font-size: 14px; }
         .flex-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
         .channel-message { background: #ffe5c4; border-radius: 20px; padding: 12px; margin-bottom: 16px; }
+        .channel-msg-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .msg-author-name { font-weight: 600; font-size: 14px; color: #4a2a0e; }
+        .msg-time { font-size: 10px; color: #8b6914; margin-left: 8px; }
+        .msg-text { font-size: 15px; margin: 8px 0; word-break: break-word; }
+        .msg-actions { display: flex; gap: 16px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #ffcc88; }
+        .msg-actions button { width: auto; background: transparent; color: #f57c00; margin: 0; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+        .channel-comment { margin-left: 40px; padding: 8px; background: #fff5e8; border-radius: 16px; margin-top: 8px; }
         @media (min-width: 1024px) { .app-container { width: 1000px; height: 85vh; } }
         @media (max-width: 600px) { .tab-item span { font-size: 10px; } .tab-item i { font-size: 18px; } }
         .toast-msg { position: fixed; bottom: 20px; left: 20px; background: #2c3e2f; color: white; padding: 10px 20px; border-radius: 50px; z-index: 999; font-size: 13px; }
@@ -71,6 +78,7 @@
     let currentMessagesRef = null;
     let dialogsCache = null;
     let dialogsCacheTime = 0;
+    let isLoading = false;
 
     function showToast(msg) {
         let toast = document.createElement('div');
@@ -140,8 +148,18 @@
         return channels;
     }
 
-    async function getDialogs(force = false) {
-        if(!force && dialogsCache && (Date.now() - dialogsCacheTime) < 3000) {
+    async function checkChannelUsername(username) {
+        const snapshot = await db.ref('channels').orderByChild('username').equalTo(username).once('value');
+        return snapshot.exists();
+    }
+
+    async function checkGroupUsername(username) {
+        const snapshot = await db.ref('groups').orderByChild('username').equalTo(username).once('value');
+        return snapshot.exists();
+    }
+
+    async function getDialogs() {
+        if(dialogsCache && (Date.now() - dialogsCacheTime) < 2000) {
             return dialogsCache;
         }
         
@@ -150,25 +168,29 @@
         const dialogs = [];
         if(!snapshot.val()) return dialogs;
         
+        const promises = [];
         for(let chatId of Object.keys(snapshot.val())) {
             if(chatId.includes(currentUser.userId)) {
                 const parts = chatId.split('_');
                 const otherId = parts[0] === currentUser.userId ? parts[1] : parts[0];
-                const userSnap = await db.ref(`users/${otherId}`).once('value');
-                if(userSnap.exists()) {
-                    const user = userSnap.val();
-                    let lastMessage = '';
-                    let lastTime = 0;
-                    const messagesSnap = await db.ref(`chats/${chatId}/messages`).once('value');
-                    if(messagesSnap.val()) {
-                        const msgs = Object.values(messagesSnap.val());
-                        const lastMsg = msgs[msgs.length - 1];
-                        if(lastMsg) { lastTime = lastMsg.timestamp; lastMessage = lastMsg.text; }
+                promises.push((async () => {
+                    const userSnap = await db.ref(`users/${otherId}`).once('value');
+                    if(userSnap.exists()) {
+                        const user = userSnap.val();
+                        let lastMessage = '';
+                        let lastTime = 0;
+                        const messagesSnap = await db.ref(`chats/${chatId}/messages`).once('value');
+                        if(messagesSnap.val()) {
+                            const msgs = Object.values(messagesSnap.val());
+                            const lastMsg = msgs[msgs.length - 1];
+                            if(lastMsg) { lastTime = lastMsg.timestamp; lastMessage = lastMsg.text; }
+                        }
+                        dialogs.push({ userId: otherId, nickname: user.nickname, username: user.username, avatarIcon: user.avatarIcon, avatarBg: user.avatarBg, verified: user.verified, lastMessage: lastMessage || 'Напишите первое сообщение', lastTime: lastTime });
                     }
-                    dialogs.push({ userId: otherId, nickname: user.nickname, username: user.username, avatarIcon: user.avatarIcon, avatarBg: user.avatarBg, verified: user.verified, lastMessage: lastMessage || 'Напишите первое сообщение', lastTime: lastTime });
-                }
+                })());
             }
         }
+        await Promise.all(promises);
         dialogs.sort((a,b) => (b.lastTime || 0) - (a.lastTime || 0));
         dialogsCache = dialogs;
         dialogsCacheTime = Date.now();
@@ -216,6 +238,8 @@
     }
 
     async function createChannel(channelName, channelUsername, ownerId) {
+        const exists = await checkChannelUsername(channelUsername);
+        if(exists) { showToast('❌ Юзернейм канала уже занят'); return null; }
         const chanId = 'chan_' + Date.now();
         await db.ref(`channels/${chanId}`).set({ channelId: chanId, name: channelName, username: channelUsername, ownerId: ownerId, subscribers: { [ownerId]: true }, verified: false });
         showToast('📺 Канал создан');
@@ -225,6 +249,8 @@
     async function subscribeToChannel(channelId, userId) { await db.ref(`channels/${channelId}/subscribers/${userId}`).set(true); showToast('🔔 Подписка оформлена'); }
 
     async function createGroup(groupName, groupUsername, ownerId) {
+        const exists = await checkGroupUsername(groupUsername);
+        if(exists) { showToast('❌ Юзернейм группы уже занят'); return null; }
         const groupId = 'grp_' + Date.now();
         await db.ref(`groups/${groupId}`).set({ groupId, name: groupName, username: groupUsername, ownerId, members: { [ownerId]: true } });
         showToast('👥 Группа создана');
@@ -281,6 +307,9 @@
     }
 
     async function renderApp() {
+        if(isLoading) return;
+        isLoading = true;
+        
         const root = document.getElementById('appRoot');
         if(!currentUser) {
             root.innerHTML = `<div class="auth-panel"><h2 style="text-align:center">🐾 BarsikNet 3.0</h2><div style="display:flex; gap:10px; margin:20px 0;"><button id="showLoginBtn">Вход</button><button id="showRegBtn">Регистрация</button></div><div id="authForm"><input type="text" id="loginUsername" placeholder="Юзернейм"><input type="password" id="loginPassword" placeholder="Пароль"><button id="doLoginBtn">Войти</button></div></div>`;
@@ -301,6 +330,7 @@
             };
             document.getElementById('showLoginBtn')?.addEventListener('click', showLogin);
             document.getElementById('showRegBtn')?.addEventListener('click', showReg);
+            isLoading = false;
             return;
         }
 
@@ -327,6 +357,7 @@
         });
         
         attachEvents();
+        isLoading = false;
     }
 
     async function renderPostsTab() {
@@ -422,49 +453,75 @@
             
             if(!messagesRef) return;
             
-            let lastMessageIds = new Set();
-            
-            messagesRef.on('value', (snapshot) => {
+            messagesRef.off();
+            messagesRef.on('value', async (snapshot) => {
                 const msgs = [];
-                snapshot.forEach(child => { 
-                    const m = child.val(); 
-                    if(!lastMessageIds.has(child.key)) {
-                        lastMessageIds.add(child.key);
-                        msgs.push({ id: child.key, ...m });
-                    }
-                });
+                snapshot.forEach(child => { msgs.push({ id: child.key, ...child.val() }); });
                 msgs.sort((a,b) => a.timestamp - b.timestamp);
                 
-                if(msgs.length === 0 && lastMessageIds.size === 0) {
+                if(msgs.length === 0) {
                     msgDiv.innerHTML = '<div style="text-align: center; color: #6b4c2a; margin-top: 20px;">💬 Напишите первое сообщение</div>';
-                } else if(msgs.length > 0) {
-                    const newMessagesHtml = msgs.map(m => {
-                        if(type === 'pm') return `<div style="display: flex; justify-content: ${m.from === currentUser.userId ? 'flex-end' : 'flex-start'}; margin: 8px 0;"><div class="msg-bubble" style="background: ${m.from === currentUser.userId ? '#faa75e' : '#ffe1b3'}">${m.text}<br><small>${new Date(m.timestamp).toLocaleTimeString()}</small></div></div>`;
-                        else if(type === 'channel') return `<div class="channel-message"><div class="channel-msg-header">${renderAvatar(m.fromName, '#ffb347', 'avatar-sm')}<div><strong>${m.fromName || m.from}</strong><div style="font-size: 11px;">${new Date(m.timestamp).toLocaleString()}</div></div></div><p>${m.text}</p><div class="msg-actions"><button class="channel-comment-toggle" data-msg-id="${m.msgId || m.id}"><i class="fas fa-comment"></i> Комментарии (${m.commentsCount || 0})</button></div><div class="comments-section" id="channel-comments-${m.msgId || m.id}" style="display: none;"><div id="channel-comments-list-${m.msgId || m.id}"></div><div class="flex-between" style="margin-top: 12px;"><input type="text" id="channel-comment-input-${m.msgId || m.id}" placeholder="Ваш комментарий..." value="${channelCommentDrafts[m.msgId || m.id] || ''}"><button class="add-channel-comment-btn" data-msg-id="${m.msgId || m.id}" style="width: auto;">→</button></div></div></div>`;
-                        else return `<div style="margin:8px 0; padding:8px; background:#ffe5c4; border-radius:20px;"><strong>${m.fromName || m.from}</strong>: ${m.text}</div>`;
-                    }).join('');
-                    msgDiv.insertAdjacentHTML('beforeend', newMessagesHtml);
-                    msgDiv.scrollTop = msgDiv.scrollHeight;
-                    
-                    // Загружаем комментарии для каждого сообщения канала
-                    if(type === 'channel') {
-                        msgs.forEach(m => {
+                } else {
+                    if(type === 'pm') {
+                        msgDiv.innerHTML = msgs.map(m => `<div style="display: flex; justify-content: ${m.from === currentUser.userId ? 'flex-end' : 'flex-start'}; margin: 8px 0;"><div class="msg-bubble" style="background: ${m.from === currentUser.userId ? '#faa75e' : '#ffe1b3'}">${m.text}<br><small>${new Date(m.timestamp).toLocaleTimeString()}</small></div></div>`).join('');
+                    } else if(type === 'channel') {
+                        msgDiv.innerHTML = '';
+                        for(let m of msgs) {
+                            const commentsCount = m.commentsCount || 0;
+                            msgDiv.innerHTML += `<div class="channel-message"><div class="channel-msg-header">${renderAvatar(m.fromName, '#ffb347', 'avatar-sm')}<div><span class="msg-author-name">${m.fromName || m.from}</span><span class="msg-time">${new Date(m.timestamp).toLocaleString()}</span></div></div><div class="msg-text">${m.text}</div><div class="msg-actions"><button class="channel-comment-toggle" data-msg-id="${m.msgId || m.id}"><i class="fas fa-comment"></i> Комментарии (${commentsCount})</button></div><div class="comments-section" id="channel-comments-${m.msgId || m.id}" style="display: none;"><div id="channel-comments-list-${m.msgId || m.id}"></div><div class="flex-between" style="margin-top: 12px;"><input type="text" id="channel-comment-input-${m.msgId || m.id}" placeholder="Ваш комментарий..." value="${channelCommentDrafts[m.msgId || m.id] || ''}"><button class="add-channel-comment-btn" data-msg-id="${m.msgId || m.id}" style="width: auto;">→</button></div></div></div>`;
+                            
+                            const commentsSnap = await db.ref(`channels/${currentChannelId}/messages/${m.msgId || m.id}/comments`).once('value');
                             const commentsList = document.getElementById(`channel-comments-list-${m.msgId || m.id}`);
-                            if(commentsList) {
-                                db.ref(`channels/${currentChannelId}/messages/${m.msgId || m.id}/comments`).once('value').then(snap => {
-                                    if(snap.val()) {
-                                        const comments = Object.values(snap.val());
-                                        comments.sort((a,b) => a.timestamp - b.timestamp);
-                                        comments.forEach(c => {
-                                            commentsList.innerHTML += `<div style="margin: 8px 0;"><strong>${c.userName}</strong>: ${c.text}</div>`;
-                                        });
-                                    } else {
-                                        commentsList.innerHTML = '<i>💬 Нет комментариев</i>';
-                                    }
+                            if(commentsSnap.val()) {
+                                const comments = Object.values(commentsSnap.val());
+                                comments.sort((a,b) => a.timestamp - b.timestamp);
+                                comments.forEach(c => {
+                                    if(commentsList) commentsList.innerHTML += `<div class="channel-comment"><strong>${c.userName}</strong>: ${c.text}</div>`;
                                 });
+                            } else if(commentsList) {
+                                commentsList.innerHTML = '<i>💬 Нет комментариев</i>';
                             }
+                        }
+                        msgDiv.scrollTop = msgDiv.scrollHeight;
+                        
+                        document.querySelectorAll('.channel-comment-toggle').forEach(btn => {
+                            btn.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                const msgId = btn.dataset.msgId;
+                                const div = document.getElementById(`channel-comments-${msgId}`);
+                                if(div) div.style.display = div.style.display === 'none' ? 'block' : 'none';
+                            });
                         });
+                        document.querySelectorAll('.add-channel-comment-btn').forEach(btn => {
+                            btn.addEventListener('click', async (e) => {
+                                e.stopPropagation();
+                                const msgId = btn.dataset.msgId;
+                                const input = document.getElementById(`channel-comment-input-${msgId}`);
+                                if(input.value.trim()) {
+                                    await addChannelComment(currentChannelId, msgId, input.value);
+                                    delete channelCommentDrafts[msgId];
+                                    const commentsList = document.getElementById(`channel-comments-list-${msgId}`);
+                                    if(commentsList) {
+                                        commentsList.innerHTML = '';
+                                        const snap = await db.ref(`channels/${currentChannelId}/messages/${msgId}/comments`).once('value');
+                                        if(snap.val()) {
+                                            const comments = Object.values(snap.val());
+                                            comments.sort((a,b) => a.timestamp - b.timestamp);
+                                            comments.forEach(c => {
+                                                commentsList.innerHTML += `<div class="channel-comment"><strong>${c.userName}</strong>: ${c.text}</div>`;
+                                            });
+                                        } else {
+                                            commentsList.innerHTML = '<i>💬 Нет комментариев</i>';
+                                        }
+                                    }
+                                    input.value = '';
+                                }
+                            });
+                        });
+                    } else if(type === 'group') {
+                        msgDiv.innerHTML = msgs.map(m => `<div style="margin:8px 0; padding:8px; background:#ffe5c4; border-radius:20px;"><strong>${m.fromName || m.from}</strong>: ${m.text}</div>`).join('');
                     }
+                    msgDiv.scrollTop = msgDiv.scrollHeight;
                 }
             });
             currentMessagesRef = messagesRef;
@@ -493,44 +550,6 @@
                 inputField.placeholder = "🔒 Только для чтения";
                 sendBtn.disabled = true;
             }
-            
-            // Обработчики для комментариев в канале
-            setTimeout(() => {
-                document.querySelectorAll('.channel-comment-toggle').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        const msgId = btn.dataset.msgId;
-                        const div = document.getElementById(`channel-comments-${msgId}`);
-                        if(div) div.style.display = div.style.display === 'none' ? 'block' : 'none';
-                    });
-                });
-                document.querySelectorAll('.add-channel-comment-btn').forEach(btn => {
-                    btn.addEventListener('click', async (e) => {
-                        e.stopPropagation();
-                        const msgId = btn.dataset.msgId;
-                        const input = document.getElementById(`channel-comment-input-${msgId}`);
-                        if(input.value.trim()) {
-                            await addChannelComment(currentChannelId, msgId, input.value);
-                            delete channelCommentDrafts[msgId];
-                            const commentsList = document.getElementById(`channel-comments-list-${msgId}`);
-                            if(commentsList) {
-                                commentsList.innerHTML = '';
-                                const snap = await db.ref(`channels/${currentChannelId}/messages/${msgId}/comments`).once('value');
-                                if(snap.val()) {
-                                    const comments = Object.values(snap.val());
-                                    comments.sort((a,b) => a.timestamp - b.timestamp);
-                                    comments.forEach(c => {
-                                        commentsList.innerHTML += `<div style="margin: 8px 0;"><strong>${c.userName}</strong>: ${c.text}</div>`;
-                                    });
-                                } else {
-                                    commentsList.innerHTML = '<i>💬 Нет комментариев</i>';
-                                }
-                            }
-                            input.value = '';
-                        }
-                    });
-                });
-            }, 200);
         }, 50);
         
         return `<div id="fullscreenChatContainer" class="fullscreen-chat"><div class="chat-header"><button id="closeFullscreenBtn" style="width: auto;"><i class="fas fa-arrow-left"></i> Назад</button>${avatarHtml}<div><strong>${title}</strong></div></div><div class="chat-messages-area" id="fullscreenMsgList"></div><div class="chat-input-area"><input type="text" id="fullscreenMsgInput" placeholder="Сообщение..." style="flex: 1;"><button id="fullscreenSendBtn" style="width: auto;">Отправить</button></div></div>`;
