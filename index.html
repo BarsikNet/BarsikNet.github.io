@@ -23,6 +23,7 @@
         .tab-item { flex: 1; text-align: center; color: #fff7e8; font-size: 13px; font-weight: 600; padding: 8px 0; border-radius: 32px; cursor: pointer; background: rgba(255, 200, 120, 0.2); transition: all 0.2s; }
         .tab-item i { display: block; font-size: 22px; margin-bottom: 4px; }
         .tab-item.active { background: #f57c00; color: white; box-shadow: 0 6px 14px rgba(0,0,0,0.2); }
+        .tab-item:active { transform: scale(0.95); }
         
         .auth-panel { background: rgba(255,245,225,0.9); border-radius: 40px; padding: 32px 24px; max-width: 480px; margin: 10% auto; }
         
@@ -86,6 +87,7 @@
             z-index: 100;
         }
         .add-post-fab:hover { transform: scale(1.1); }
+        .add-post-fab:active { transform: scale(0.95); }
         .add-post-fab i { font-size: 24px; margin: 0; }
         
         .modal {
@@ -116,6 +118,11 @@
         .clickable-name:hover {
             text-decoration: underline;
         }
+        
+        .tab-loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -139,6 +146,8 @@
     let cachedDialogs = null;
     let loadingPosts = false;
     let loadingDialogs = false;
+    let isRendering = false;
+    let pendingRender = null;
 
     function showToast(msg) {
         let toast = document.createElement('div');
@@ -231,7 +240,7 @@
                         clearInterval(check);
                         resolve();
                     }
-                }, 100);
+                }, 50);
             });
             return cachedDialogs;
         }
@@ -286,7 +295,7 @@
                         clearInterval(check);
                         resolve();
                     }
-                }, 100);
+                }, 50);
             });
             return cachedPosts;
         }
@@ -489,6 +498,12 @@
     }
 
     async function renderApp() {
+        if (isRendering) {
+            pendingRender = true;
+            return;
+        }
+        
+        isRendering = true;
         const root = document.getElementById('appRoot');
         
         if(!currentUser) {
@@ -551,6 +566,7 @@
             };
             document.getElementById('showLoginBtn')?.addEventListener('click', showLogin);
             document.getElementById('showRegBtn')?.addEventListener('click', showReg);
+            isRendering = false;
             return;
         }
         
@@ -558,7 +574,7 @@
             let mainView = await renderProfilePage();
             root.innerHTML = `
                 <div class="main-content" id="mainContent">${mainView}</div>
-                <div class="tab-bar">
+                <div class="tab-bar" id="tabBar">
                     <div class="tab-item ${activeTab==='feed'?'active':''}" data-tab="feed"><i class="fas fa-home"></i><span>Лента</span></div>
                     <div class="tab-item ${activeTab==='dialogs'?'active':''}" data-tab="dialogs"><i class="fas fa-comments"></i><span>Диалоги</span></div>
                     <div class="tab-item ${activeTab==='channels'?'active':''}" data-tab="channels"><i class="fas fa-bullhorn"></i><span>Каналы</span></div>
@@ -568,20 +584,9 @@
                 </div>
             `;
             
-            document.querySelectorAll('.tab-item').forEach(tab => {
-                tab.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    if(currentMessagesRef) { currentMessagesRef.off(); currentMessagesRef = null; }
-                    activeTab = tab.dataset.tab;
-                    currentChatUserId = null;
-                    currentChannelId = null;
-                    currentGroupId = null;
-                    currentProfileUserId = null;
-                    renderApp();
-                });
-            });
-            
+            attachTabEvents();
             attachProfileEvents();
+            isRendering = false;
             return;
         }
 
@@ -596,7 +601,7 @@
         root.innerHTML = `
             <div class="main-content" id="mainContent">${mainView}</div>
             ${activeTab === 'feed' ? '<div class="add-post-fab" id="addPostFab"><i class="fas fa-plus"></i></div>' : ''}
-            <div class="tab-bar">
+            <div class="tab-bar" id="tabBar">
                 <div class="tab-item ${activeTab==='feed'?'active':''}" data-tab="feed"><i class="fas fa-home"></i><span>Лента</span></div>
                 <div class="tab-item ${activeTab==='dialogs'?'active':''}" data-tab="dialogs"><i class="fas fa-comments"></i><span>Диалоги</span></div>
                 <div class="tab-item ${activeTab==='channels'?'active':''}" data-tab="channels"><i class="fas fa-bullhorn"></i><span>Каналы</span></div>
@@ -606,11 +611,27 @@
             </div>
         `;
         
+        attachTabEvents();
+        attachEvents();
+        
+        isRendering = false;
+        if (pendingRender) {
+            pendingRender = false;
+            renderApp();
+        }
+    }
+    
+    function attachTabEvents() {
         document.querySelectorAll('.tab-item').forEach(tab => {
-            tab.addEventListener('click', (e) => {
+            const newTab = tab.cloneNode(true);
+            tab.parentNode.replaceChild(newTab, tab);
+            newTab.addEventListener('click', (e) => {
                 e.stopPropagation();
-                if(currentMessagesRef) { currentMessagesRef.off(); currentMessagesRef = null; }
-                activeTab = tab.dataset.tab;
+                if(currentMessagesRef) { 
+                    currentMessagesRef.off(); 
+                    currentMessagesRef = null; 
+                }
+                activeTab = newTab.dataset.tab;
                 currentChatUserId = null;
                 currentChannelId = null;
                 currentGroupId = null;
@@ -618,8 +639,6 @@
                 renderApp();
             });
         });
-        
-        attachEvents();
     }
     
     async function renderProfilePage() {
@@ -1248,7 +1267,9 @@
     function attachProfileEvents() {
         const backBtn = document.getElementById('backFromProfileBtn');
         if(backBtn) {
-            backBtn.addEventListener('click', () => {
+            const newBackBtn = backBtn.cloneNode(true);
+            backBtn.parentNode.replaceChild(newBackBtn, backBtn);
+            newBackBtn.addEventListener('click', () => {
                 currentProfileUserId = null;
                 renderApp();
             });
@@ -1256,8 +1277,10 @@
         
         const messageBtn = document.getElementById('messageFromProfileBtn');
         if(messageBtn) {
-            messageBtn.addEventListener('click', () => {
-                currentChatUserId = messageBtn.dataset.userid;
+            const newMessageBtn = messageBtn.cloneNode(true);
+            messageBtn.parentNode.replaceChild(newMessageBtn, messageBtn);
+            newMessageBtn.addEventListener('click', () => {
+                currentChatUserId = newMessageBtn.dataset.userid;
                 currentProfileUserId = null;
                 activeTab = 'dialogs';
                 renderApp();
